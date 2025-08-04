@@ -143,8 +143,7 @@ def main():
     elif args.strategy == 'replay':
         strategy = Replay(
             **base_kwargs,
-            mem_size=500,
-            batch_size_mem=None  # Use default
+            mem_size=500
         )
     
     print(f"\nStrategy: {strategy.__class__.__name__}")
