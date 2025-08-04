@@ -20,15 +20,28 @@ def download_lfw(root: str):
     url = "http://vis-www.cs.umass.edu/lfw/lfw.tgz"
     filename = os.path.join(root, "lfw.tgz")
     
-    print("Downloading LFW dataset...")
-    urllib.request.urlretrieve(url, filename)
-    
-    print("Extracting...")
-    with tarfile.open(filename, 'r:gz') as tar:
-        tar.extractall(root)
-    
-    os.remove(filename)
-    print("LFW dataset downloaded successfully")
+    try:
+        print("Downloading LFW dataset...")
+        # Add timeout and better error handling
+        import socket
+        socket.setdefaulttimeout(30)
+        urllib.request.urlretrieve(url, filename)
+        
+        print("Extracting...")
+        with tarfile.open(filename, 'r:gz') as tar:
+            tar.extractall(root)
+        
+        os.remove(filename)
+        print("LFW dataset downloaded successfully")
+    except Exception as e:
+        print(f"Failed to download LFW dataset: {e}")
+        print("\nTo manually download:")
+        print(f"1. Download from: {url}")
+        print(f"2. Extract to: {root}")
+        print("3. Ensure the structure is: {root}/lfw/<person_name>/<images>")
+        raise RuntimeError(
+            "Could not download LFW dataset. Please download manually or check your internet connection."
+        )
 
 
 def load_lfw_dataset(

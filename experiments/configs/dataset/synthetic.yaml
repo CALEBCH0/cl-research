@@ -1,0 +1,31 @@
+# Synthetic dataset configuration for testing
+name: "synthetic"
+root: "datasets/synthetic"
+download: false
+
+# Data configuration
+num_samples: 1000
+num_classes: 50
+img_channels: 3
+img_size: [64, 64]  # Smaller for faster testing
+
+# Data split configuration  
+train_split: 0.7
+val_split: 0.15
+test_split: 0.15
+
+# Preprocessing
+normalize_mean: [0.5, 0.5, 0.5]
+normalize_std: [0.5, 0.5, 0.5]
+
+# Augmentation
+train_augmentation:
+  random_horizontal_flip: 0.5
+  random_crop: false
+  color_jitter: 0
+  random_erasing: 0
+
+# Continual learning scenario
+n_experiences: 3
+scenario_type: "class_incremental"
+shuffle_classes: true

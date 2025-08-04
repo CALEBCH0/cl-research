@@ -75,13 +75,41 @@ def build_face_cl_scenario(config: Dict[str, Any]):
             train_split=config['train_split'],
             val_split=config['val_split']
         )
+        # Create dataset objects
+        train_dataset = FaceDataset(root, train_samples, transform=train_transform)
+        val_dataset = FaceDataset(root, val_samples, transform=test_transform)
+        test_dataset = FaceDataset(root, test_samples, transform=test_transform)
+    elif dataset_name == 'synthetic':
+        from .synthetic_loader import create_synthetic_face_dataset, SyntheticFaceDataset
+        train_samples, val_samples, test_samples = create_synthetic_face_dataset(
+            num_samples=config.get('num_samples', 1000),
+            num_classes=config.get('num_classes', 50),
+            img_size=tuple(config.get('img_size', [64, 64])),
+            img_channels=config.get('img_channels', 3),
+            train_split=config['train_split'],
+            val_split=config['val_split']
+        )
+        # Create dataset objects with synthetic dataset class
+        train_dataset = SyntheticFaceDataset(
+            train_samples,
+            img_size=tuple(config.get('img_size', [64, 64])),
+            img_channels=config.get('img_channels', 3),
+            transform=train_transform
+        )
+        val_dataset = SyntheticFaceDataset(
+            val_samples,
+            img_size=tuple(config.get('img_size', [64, 64])),
+            img_channels=config.get('img_channels', 3),
+            transform=test_transform
+        )
+        test_dataset = SyntheticFaceDataset(
+            test_samples,
+            img_size=tuple(config.get('img_size', [64, 64])),
+            img_channels=config.get('img_channels', 3),
+            transform=test_transform
+        )
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
-    
-    # Create dataset objects
-    train_dataset = FaceDataset(root, train_samples, transform=train_transform)
-    val_dataset = FaceDataset(root, val_samples, transform=test_transform)
-    test_dataset = FaceDataset(root, test_samples, transform=test_transform)
     
     # Convert to Avalanche datasets
     train_dataset = AvalancheDataset(train_dataset)
