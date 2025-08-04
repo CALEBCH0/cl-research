@@ -108,25 +108,36 @@ def main():
     benchmark = get_face_benchmark(args.dataset, args.n_experiences)
     
     # Determine input channels and classes
-    # Access the first sample to determine shape
-    first_exp = benchmark.train_stream[0]
-    sample = first_exp.dataset[0]
-    
-    # Handle different dataset formats
-    if isinstance(sample, tuple) and len(sample) == 3:
-        # Avalanche dataset format: (data, label, task_label)
-        sample_input = sample[0]
-    elif isinstance(sample, tuple) and len(sample) == 2:
-        # Standard format: (data, label)
-        sample_input = sample[0]
+    # For SplitFMNIST, we know the properties
+    if args.dataset == 'fmnist':
+        input_channels = 1
+        num_classes = 10
     else:
-        # Just the data
-        sample_input = sample
+        # Try to determine from dataset
+        try:
+            first_exp = benchmark.train_stream[0]
+            # Create a small dataloader to get a sample
+            from torch.utils.data import DataLoader
+            temp_loader = DataLoader(first_exp.dataset, batch_size=1)
+            sample_batch = next(iter(temp_loader))
+            
+            if isinstance(sample_batch, (list, tuple)):
+                sample_input = sample_batch[0]
+            else:
+                sample_input = sample_batch
+                
+            # Convert to tensor if needed
+            if not isinstance(sample_input, torch.Tensor):
+                sample_input = torch.tensor(sample_input)
+                
+            input_channels = sample_input.shape[1] if len(sample_input.shape) == 4 else 1
+            num_classes = 10  # Default
+        except:
+            # Fallback values
+            input_channels = 3
+            num_classes = 10
     
-    input_channels = sample_input.shape[0] if len(sample_input.shape) == 3 else 1
-    num_classes = benchmark.n_classes if hasattr(benchmark, 'n_classes') else 10
-    
-    print(f"Input shape: {sample_input.shape}")
+    print(f"Input channels: {input_channels}")
     print(f"Number of classes: {num_classes}")
     
     # Create model
