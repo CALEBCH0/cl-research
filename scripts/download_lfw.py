@@ -27,31 +27,61 @@ def main():
         print("LFW dataset already exists!")
         return
     
-    url = "http://vis-www.cs.umass.edu/lfw/lfw.tgz"
+    # Try multiple sources
+    urls = [
+        "http://vis-www.cs.umass.edu/lfw/lfw.tgz",  # Original (often down)
+        "https://ndownloader.figshare.com/files/5976018",  # Alternative source
+        "http://conradsanderson.id.au/lfwcrop/lfwcrop_grey.zip"  # Cropped version
+    ]
+    
     filename = os.path.join(root, "lfw.tgz")
     
     print("Downloading LFW dataset...")
-    print(f"URL: {url}")
-    print(f"Destination: {filename}")
     
-    try:
-        # Try with requests first (better for WSL)
-        download_with_progress(url, filename)
-    except Exception as e:
-        print(f"Failed with requests: {e}")
-        print("Trying with urllib...")
+    downloaded = False
+    for i, url in enumerate(urls):
+        print(f"\nTrying source {i+1}/{len(urls)}: {url}")
+        
+        # Adjust filename based on URL
+        if url.endswith('.zip'):
+            filename = os.path.join(root, "lfw.zip")
+        else:
+            filename = os.path.join(root, "lfw.tgz")
+            
         try:
-            urllib.request.urlretrieve(url, filename)
-        except Exception as e2:
-            print(f"Failed with urllib: {e2}")
-            print("\nPlease download manually:")
+            # Try with requests first
+            download_with_progress(url, filename)
+            downloaded = True
+            break
+        except Exception as e:
+            print(f"Failed with requests: {e}")
+            try:
+                print("Trying with urllib...")
+                urllib.request.urlretrieve(url, filename)
+                downloaded = True
+                break
+            except Exception as e2:
+                print(f"Failed with urllib: {e2}")
+                continue
+    
+    if not downloaded:
+        print("\nAll download sources failed!")
+        print("\nAlternative: Use Kaggle dataset")
+        print("1. Go to: https://www.kaggle.com/datasets/jessicali9530/lfw-dataset")
+        print("2. Download and extract to: datasets/face_datasets/")
+        print("\nOr try wget with different sources:")
+        for url in urls:
             print(f"wget {url} -O {filename}")
-            print(f"tar -xzf {filename} -C {root}")
-            sys.exit(1)
+        sys.exit(1)
     
     print("Extracting...")
-    with tarfile.open(filename, 'r:gz') as tar:
-        tar.extractall(root)
+    if filename.endswith('.zip'):
+        import zipfile
+        with zipfile.ZipFile(filename, 'r') as zip_ref:
+            zip_ref.extractall(root)
+    else:
+        with tarfile.open(filename, 'r:gz') as tar:
+            tar.extractall(root)
     
     os.remove(filename)
     print("✓ LFW dataset downloaded successfully!")
