@@ -38,42 +38,42 @@ pip install -r requirements_fixed.txt
 
 ## Quick Start
 
-### Option 1: Using Avalanche Built-in Datasets (Recommended for Testing)
+### Option 1: Simple Continual Learning (Recommended)
 
 ```bash
-# Test with Fashion-MNIST (quick, no face data needed)
-python train_faces_avalanche.py --dataset fmnist --epochs 2
+# Test with Fashion-MNIST using different strategies
+python train_working.py --benchmark fmnist --strategy naive --epochs 2
+python train_working.py --benchmark fmnist --strategy replay --epochs 2
+python train_working.py --benchmark fmnist --strategy ewc --epochs 2
 
-# Test with CIFAR-10 (general benchmark)
-python train_simple.py --benchmark cifar10 --epochs 2 --strategy ewc
-
-# Test with different strategies
-python train_simple.py --benchmark mnist --strategy replay --epochs 3
+# Test different buffer sizes for replay
+python train_working.py --benchmark fmnist --strategy replay --mem_size 100 --epochs 2
+python train_working.py --benchmark fmnist --strategy replay --mem_size 500 --epochs 2
 ```
 
-### Option 2: Using Synthetic Data (No Download Required)
+### Option 2: Advanced Face Recognition (Custom Framework)
 
 ```bash
-# Run with synthetic face data
+# Run with synthetic face data (no download required)
 python train_face_cl.py dataset=synthetic training.epochs_per_experience=2
 
-# Smaller synthetic dataset for quick testing
-python train_face_cl.py dataset=synthetic dataset.num_samples=500 dataset.num_classes=20
-```
-
-### Option 3: Using Real Face Data (LFW Dataset)
-
-```bash
-# First, download LFW dataset (if you have internet)
-python scripts/download_lfw.py
-
-# Then run experiments
+# Run with real LFW dataset
+python scripts/download_lfw.py  # Download first
 python train_face_cl.py
 
-# Or manually download if behind firewall/proxy:
-# 1. Download: http://vis-www.cs.umass.edu/lfw/lfw.tgz
-# 2. Extract to: datasets/face_datasets/lfw/
-# 3. Run: python train_face_cl.py
+# Compare different backbones and strategies
+python train_face_cl.py backbone=resnet50 strategy=ewc
+python train_face_cl.py backbone=mobilenet strategy=replay
+```
+
+### Option 3: Automated Comparisons
+
+```bash
+# Compare different replay buffer sizes
+python compare_buffer_sizes.py
+
+# Run all backbone/strategy combinations
+bash scripts/run_experiments.sh
 ```
 
 ## Example Usage

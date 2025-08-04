@@ -2,8 +2,15 @@
 import torch
 import torch.nn as nn
 from avalanche.benchmarks.classic import SplitMNIST, SplitCIFAR10, SplitFMNIST
+from avalanche.benchmarks import nc_benchmark
+from avalanche.benchmarks.utils import AvalancheDataset
+from torchvision import datasets, transforms
 from avalanche.models import SimpleMLP, SimpleCNN
-from avalanche.training.supervised import Naive, EWC, Replay
+from avalanche.training.supervised import (
+    Naive, EWC, Replay, GEM, AGEM, LwF, 
+    SynapticIntelligence as SI, MAS, GDumb,
+    Cumulative, JointTraining, ICaRL
+)
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger
 from avalanche.training.plugins import EvaluationPlugin
@@ -13,10 +20,11 @@ import argparse
 def main():
     parser = argparse.ArgumentParser(description='Avalanche CL Training')
     parser.add_argument('--benchmark', type=str, default='mnist',
-                       choices=['mnist', 'fmnist', 'cifar10'],
+                       choices=['mnist', 'fmnist', 'cifar10', 'lfw', 'celeba'],
                        help='Benchmark to use')
     parser.add_argument('--strategy', type=str, default='naive',
-                       choices=['naive', 'ewc', 'replay'],
+                       choices=['naive', 'ewc', 'replay', 'gem', 'agem', 'lwf', 
+                               'si', 'mas', 'gdumb', 'cumulative', 'joint', 'icarl'],
                        help='CL strategy')
     parser.add_argument('--model', type=str, default='mlp',
                        choices=['mlp', 'cnn'],
@@ -73,6 +81,94 @@ def main():
         input_size = 32 * 32 * 3
         num_classes = 10
         channels = 3
+    elif args.benchmark == 'lfw':
+        # LFW People dataset
+        transform = transforms.Compose([
+            transforms.Resize((64, 64)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        
+        try:
+            train_dataset = datasets.LFWPeople(
+                root='./data', split='train', download=True, transform=transform
+            )
+            test_dataset = datasets.LFWPeople(
+                root='./data', split='test', download=True, transform=transform
+            )
+            
+            # Wrap in Avalanche dataset
+            train_dataset = AvalancheDataset(train_dataset)
+            test_dataset = AvalancheDataset(test_dataset)
+            
+            # Create benchmark
+            benchmark = nc_benchmark(
+                train_dataset=train_dataset,
+                test_dataset=test_dataset,
+                n_experiences=args.experiences,
+                task_labels=False,
+                seed=42,
+                class_ids_from_zero_in_each_exp=True
+            )
+            
+            input_size = 64 * 64 * 3
+            num_classes = len(train_dataset.targets_task_labels.uniques)
+            channels = 3
+            
+        except Exception as e:
+            print(f"Error loading LFW: {e}")
+            print("Falling back to Fashion-MNIST")
+            benchmark = SplitFMNIST(n_experiences=args.experiences, return_task_id=False, seed=42)
+            input_size = 28 * 28
+            num_classes = 10
+            channels = 1
+            
+    elif args.benchmark == 'celeba':
+        # CelebA dataset
+        transform = transforms.Compose([
+            transforms.Resize((64, 64)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        
+        try:
+            # CelebA for attribute prediction (40 binary attributes)
+            train_dataset = datasets.CelebA(
+                root='./data', split='train', download=True, 
+                transform=transform, target_type='attr'
+            )
+            test_dataset = datasets.CelebA(
+                root='./data', split='test', download=True,
+                transform=transform, target_type='attr'
+            )
+            
+            # For continual learning, we'll use the first 10 attributes as "classes"
+            # This is a simplification - real face recognition would use identity
+            
+            # Wrap and create multi-class from attributes
+            train_dataset = AvalancheDataset(train_dataset)
+            test_dataset = AvalancheDataset(test_dataset)
+            
+            benchmark = nc_benchmark(
+                train_dataset=train_dataset,
+                test_dataset=test_dataset,
+                n_experiences=args.experiences,
+                task_labels=False,
+                seed=42
+            )
+            
+            input_size = 64 * 64 * 3
+            num_classes = 40  # 40 attributes
+            channels = 3
+            
+        except Exception as e:
+            print(f"Error loading CelebA: {e}")
+            print("Note: CelebA is ~1.4GB download")
+            print("Falling back to Fashion-MNIST")
+            benchmark = SplitFMNIST(n_experiences=args.experiences, return_task_id=False, seed=42)
+            input_size = 28 * 28
+            num_classes = 10
+            channels = 1
     
     print(f"\nBenchmark created with {benchmark.n_experiences} experiences")
     
@@ -148,6 +244,55 @@ def main():
         strategy = Replay(
             **base_kwargs,
             mem_size=args.mem_size
+        )
+    elif args.strategy == 'gem':
+        strategy = GEM(
+            **base_kwargs,
+            patterns_per_exp=256,
+            memory_strength=0.5
+        )
+    elif args.strategy == 'agem':
+        strategy = AGEM(
+            **base_kwargs,
+            patterns_per_exp=256,
+            sample_size=256
+        )
+    elif args.strategy == 'lwf':
+        strategy = LwF(
+            **base_kwargs,
+            alpha=0.5,
+            temperature=2
+        )
+    elif args.strategy == 'si':
+        strategy = SI(
+            **base_kwargs,
+            si_lambda=0.0001
+        )
+    elif args.strategy == 'mas':
+        strategy = MAS(
+            **base_kwargs,
+            lambda_reg=1,
+            alpha=0.5
+        )
+    elif args.strategy == 'gdumb':
+        strategy = GDumb(
+            **base_kwargs,
+            mem_size=args.mem_size
+        )
+    elif args.strategy == 'cumulative':
+        strategy = Cumulative(
+            **base_kwargs
+        )
+    elif args.strategy == 'joint':
+        strategy = JointTraining(
+            **base_kwargs
+        )
+    elif args.strategy == 'icarl':
+        strategy = ICaRL(
+            **base_kwargs,
+            mem_size_per_class=20,
+            buffer_transform=None,
+            fixed_memory=True
         )
     
     print(f"\nStrategy: {strategy.__class__.__name__}")
