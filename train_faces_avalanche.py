@@ -108,9 +108,23 @@ def main():
     benchmark = get_face_benchmark(args.dataset, args.n_experiences)
     
     # Determine input channels and classes
-    sample_input, _ = benchmark.train_stream[0].dataset[0]
-    input_channels = sample_input.shape[0]
-    num_classes = benchmark.n_classes
+    # Access the first sample to determine shape
+    first_exp = benchmark.train_stream[0]
+    sample = first_exp.dataset[0]
+    
+    # Handle different dataset formats
+    if isinstance(sample, tuple) and len(sample) == 3:
+        # Avalanche dataset format: (data, label, task_label)
+        sample_input = sample[0]
+    elif isinstance(sample, tuple) and len(sample) == 2:
+        # Standard format: (data, label)
+        sample_input = sample[0]
+    else:
+        # Just the data
+        sample_input = sample
+    
+    input_channels = sample_input.shape[0] if len(sample_input.shape) == 3 else 1
+    num_classes = benchmark.n_classes if hasattr(benchmark, 'n_classes') else 10
     
     print(f"Input shape: {sample_input.shape}")
     print(f"Number of classes: {num_classes}")
