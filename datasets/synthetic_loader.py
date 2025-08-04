@@ -68,6 +68,8 @@ class SyntheticFaceDataset(torch.utils.data.Dataset):
         self.img_size = img_size
         self.img_channels = img_channels
         self.transform = transform
+        # Add targets attribute for Avalanche compatibility
+        self.targets = [label for _, label in samples]
         
         # Generate consistent random images for each class
         self.class_prototypes = {}

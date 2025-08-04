@@ -25,37 +25,103 @@ cl-research/
 ## Installation
 
 ```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# If you encounter issues with avalanche-lib, try:
+pip install -r requirements_fixed.txt
 ```
 
-## Usage
+## Quick Start
 
-### 1. Run a Single Experiment
+### Option 1: Using Avalanche Built-in Datasets (Recommended for Testing)
 
 ```bash
+# Test with Fashion-MNIST (quick, no face data needed)
+python train_faces_avalanche.py --dataset fmnist --epochs 2
+
+# Test with CIFAR-10 (general benchmark)
+python train_simple.py --benchmark cifar10 --epochs 2 --strategy ewc
+
+# Test with different strategies
+python train_simple.py --benchmark mnist --strategy replay --epochs 3
+```
+
+### Option 2: Using Synthetic Data (No Download Required)
+
+```bash
+# Run with synthetic face data
+python train_face_cl.py dataset=synthetic training.epochs_per_experience=2
+
+# Smaller synthetic dataset for quick testing
+python train_face_cl.py dataset=synthetic dataset.num_samples=500 dataset.num_classes=20
+```
+
+### Option 3: Using Real Face Data (LFW Dataset)
+
+```bash
+# First, download LFW dataset (if you have internet)
+python scripts/download_lfw.py
+
+# Then run experiments
 python train_face_cl.py
+
+# Or manually download if behind firewall/proxy:
+# 1. Download: http://vis-www.cs.umass.edu/lfw/lfw.tgz
+# 2. Extract to: datasets/face_datasets/lfw/
+# 3. Run: python train_face_cl.py
 ```
 
-### 2. Run with Different Configurations
+## Example Usage
+
+### Testing Different Models and Strategies
 
 ```bash
-# Use different backbone
-python train_face_cl.py backbone=mobilenet
+# Test ResNet50 with EWC strategy
+python train_face_cl.py backbone=resnet50 strategy=ewc
 
-# Use different strategy
-python train_face_cl.py strategy=ewc
+# Test MobileNet with Replay strategy (memory efficient)
+python train_face_cl.py backbone=mobilenet strategy=replay strategy.mem_size=1000
 
-# Combine multiple overrides
-python train_face_cl.py backbone=vit strategy=replay training.batch_size=64
+# Test Vision Transformer with larger batch size
+python train_face_cl.py backbone=vit training.batch_size=64 training.epochs_per_experience=5
+
+# Quick test with reduced settings
+python train_face_cl.py dataset=synthetic \
+    dataset.num_samples=500 \
+    dataset.n_experiences=3 \
+    training.epochs_per_experience=2 \
+    training.batch_size=16
 ```
 
-### 3. Run Multiple Experiments
+### Running on Different Hardware
 
 ```bash
+# For GTX 730 (2GB VRAM) - use smaller batch sizes
+python train_face_cl.py training.batch_size=16 training.eval_batch_size=32 backbone=mobilenet
+
+# For CPU only
+python train_face_cl.py experiment.device=cpu training.batch_size=8
+
+# For M1 Mac (if MPS is working)
+python train_face_cl.py experiment.device=mps training.batch_size=32
+```
+
+### Batch Experiments
+
+```bash
+# Run all combinations of backbones and strategies
 bash scripts/run_experiments.sh
+
+# Run specific combination
+python train_face_cl.py backbone=resnet50 strategy=ewc experiment.name="resnet50_ewc_test"
 ```
 
-### 4. Analyze Results
+### Analyzing Results
 
 ```bash
 # Analyze single experiment
@@ -63,6 +129,9 @@ python scripts/analyze_results.py experiments/results/resnet50_ewc/results.yaml
 
 # Compare multiple strategies
 python scripts/analyze_results.py experiments/results --compare resnet50_naive resnet50_ewc resnet50_replay
+
+# Generate plots for a specific run
+python scripts/analyze_results.py outputs/2024-01-01/12-00-00/results.yaml --output-dir plots/
 ```
 
 ## Configuration
@@ -120,7 +189,20 @@ Results are saved in Hydra output directories with:
 
 ## Tips
 
-1. Start with a small number of experiences to test quickly
-2. Use smaller batch sizes for memory-constrained environments
-3. Monitor GPU memory usage when using replay strategies
-4. Use TensorBoard or WandB for real-time monitoring
+1. **Start Simple**: Use `train_simple.py` or `train_faces_avalanche.py` for initial testing
+2. **Memory Management**: 
+   - GTX 730 (2GB): Use batch_size=8-16, mobilenet backbone
+   - Jetson Nano: Not recommended for training
+   - CPU: Use batch_size=4-8, expect slow training
+3. **Quick Testing**: Use synthetic dataset with reduced samples and experiences
+4. **Debugging**: Set `HYDRA_FULL_ERROR=1` for detailed error traces
+5. **Network Issues**: Use synthetic data or built-in Avalanche datasets if downloads fail
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Download fails**: Use synthetic dataset or download manually
+2. **Out of memory**: Reduce batch_size and use smaller models
+3. **Import errors**: Try `pip install -r requirements_fixed.txt`
+4. **WSL network issues**: Download on Windows and copy to WSL filesystem
