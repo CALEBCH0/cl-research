@@ -2,7 +2,8 @@
 import torch
 import torch.nn as nn
 from torchvision import transforms
-from avalanche.benchmarks.classic import SplitCelebA, SplitFMNIST
+from avalanche.benchmarks.classic import SplitFMNIST
+# Note: SplitCelebA doesn't exist in avalanche 0.5.0
 from avalanche.benchmarks import nc_benchmark
 from avalanche.training import Naive, EWC, Replay
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics
@@ -15,16 +16,7 @@ def get_face_benchmark(name='fmnist', n_experiences=5):
     """Get face-related benchmark from Avalanche."""
     if name == 'fmnist':
         # Fashion-MNIST as a simple test (not faces but similar structure)
-        return SplitFMNIST(n_experiences=n_experiences, seed=42)
-    elif name == 'celeba':
-        # CelebA - actual face dataset but large download
-        # Note: This requires downloading ~1.4GB
-        transform = transforms.Compose([
-            transforms.Resize((64, 64)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-        return SplitCelebA(n_experiences=n_experiences, seed=42)
+        return SplitFMNIST(n_experiences=n_experiences, return_task_id=False, seed=42)
     else:
         # Use torchvision's LFWPeople dataset with Avalanche
         from torchvision.datasets import LFWPeople
@@ -101,7 +93,7 @@ class SimpleFaceModel(nn.Module):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='fmnist',
-                       choices=['fmnist', 'celeba', 'lfw'])
+                       choices=['fmnist', 'lfw'])
     parser.add_argument('--strategy', type=str, default='naive',
                        choices=['naive', 'ewc', 'replay'])
     parser.add_argument('--epochs', type=int, default=3)
