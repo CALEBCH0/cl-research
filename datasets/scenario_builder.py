@@ -59,10 +59,10 @@ def get_transforms(config: Dict[str, Any]) -> Tuple[transforms.Compose, transfor
 
 def build_face_cl_scenario(config: Dict[str, Any]):
     """Build continual learning scenario for face recognition."""
-    dataset_name = config['name']
-    root = config['root']
-    n_experiences = config['n_experiences']
-    scenario_type = config['scenario_type']
+    dataset_name = config.get('name', 'lfw')
+    root = config.get('root', 'datasets/face_datasets/lfw')
+    n_experiences = config.get('n_experiences', 5)
+    scenario_type = config.get('scenario_type', 'class_incremental')
     
     # Get transforms
     train_transform, test_transform = get_transforms(config)
