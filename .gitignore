@@ -32,6 +32,7 @@ results/
 checkpoints/
 *.ckpt
 *.pth
+practice.py
 
 # Hydra
 .hydra/

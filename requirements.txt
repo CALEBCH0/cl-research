@@ -1,5 +1,5 @@
 # Avalanche framework for continual learning
-avalanche-lib>=0.5.0
+avalanche-lib>=0.6.0
 
 # Deep learning frameworks
 torch>=2.0.0
