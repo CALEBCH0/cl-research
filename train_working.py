@@ -32,6 +32,8 @@ def main():
     parser.add_argument('--device', type=str, 
                        default='cuda' if torch.cuda.is_available() else 'cpu',
                        help='Device to use')
+    parser.add_argument('--mem_size', type=int, default=500,
+                       help='Replay buffer size (only for replay strategy)')
     args = parser.parse_args()
     
     print("="*60)
@@ -39,6 +41,8 @@ def main():
     print(f"Strategy: {args.strategy}")
     print(f"Model: {args.model}")
     print(f"Device: {args.device}")
+    if args.strategy == 'replay':
+        print(f"Replay buffer size: {args.mem_size}")
     print("="*60)
     
     # Create benchmark
@@ -143,7 +147,7 @@ def main():
     elif args.strategy == 'replay':
         strategy = Replay(
             **base_kwargs,
-            mem_size=500
+            mem_size=args.mem_size
         )
     
     print(f"\nStrategy: {strategy.__class__.__name__}")
