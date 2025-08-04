@@ -1,4 +1,11 @@
 """Working Avalanche example with available components."""
+import warnings
+# Suppress numpy longdouble warning (common on WSL/certain systems)
+warnings.filterwarnings('ignore', message='.*longdouble.*')
+# Suppress urllib3 OpenSSL warning (common on macOS)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', message='.*OpenSSL.*')
+
 import torch
 import torch.nn as nn
 from avalanche.benchmarks.classic import SplitMNIST, SplitCIFAR10, SplitFMNIST

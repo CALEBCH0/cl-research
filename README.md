@@ -40,15 +40,30 @@ pip install -r requirements_fixed.txt
 
 ### Option 1: Simple Continual Learning (Recommended)
 
+#### Available Benchmarks:
+- `mnist` - Handwritten digits (0-9)
+- `fmnist` - Fashion items (clothing, shoes)
+- `cifar10` - Natural images (10 classes)
+- `lfw` - Labeled Faces in the Wild (face recognition)
+- `celeba` - Celebrity faces (1.4GB download)
+
+#### Available Strategies:
+- **Regularization-based**: `naive`, `ewc`, `si`, `mas`, `lwf`
+- **Replay-based**: `replay`, `gem`, `agem`, `gdumb`, `icarl`
+- **Other**: `cumulative`, `joint` (upper bound)
+
 ```bash
-# Test with Fashion-MNIST using different strategies
+# Test different strategies on Fashion-MNIST
 python train_working.py --benchmark fmnist --strategy naive --epochs 2
 python train_working.py --benchmark fmnist --strategy replay --epochs 2
-python train_working.py --benchmark fmnist --strategy ewc --epochs 2
+python train_working.py --benchmark fmnist --strategy lwf --epochs 2
 
-# Test different buffer sizes for replay
-python train_working.py --benchmark fmnist --strategy replay --mem_size 100 --epochs 2
-python train_working.py --benchmark fmnist --strategy replay --mem_size 500 --epochs 2
+# Test with face recognition
+python train_working.py --benchmark lfw --strategy replay --mem_size 500
+
+# Test different buffer sizes
+python train_working.py --benchmark fmnist --strategy replay --mem_size 100
+python train_working.py --benchmark fmnist --strategy replay --mem_size 1000
 ```
 
 ### Option 2: Advanced Face Recognition (Custom Framework)
@@ -206,3 +221,4 @@ Results are saved in Hydra output directories with:
 2. **Out of memory**: Reduce batch_size and use smaller models
 3. **Import errors**: Try `pip install -r requirements_fixed.txt`
 4. **WSL network issues**: Download on Windows and copy to WSL filesystem
+5. **Numpy warnings on WSL**: The longdouble warning is harmless and has been suppressed
