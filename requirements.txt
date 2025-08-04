@@ -1,9 +1,12 @@
 # Avalanche framework for continual learning
-avalanche-lib==0.5.0
+avalanche-lib>=0.5.0
 
 # Deep learning frameworks
 torch>=2.0.0
 torchvision>=0.15.0
+
+# Fix for pytorchcv compatibility
+pytorchcv==0.0.67
 
 # Vision models
 timm>=0.9.0  # For various backbone models
