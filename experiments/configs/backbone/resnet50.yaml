@@ -1,0 +1,14 @@
+# ResNet50 backbone configuration
+backbone:
+  name: "resnet50"
+  type: "torchvision"
+  pretrained: true
+  freeze_until_layer: null  # Set to layer name to freeze early layers
+  drop_rate: 0.0
+  
+  # Face recognition specific modifications
+  replace_stride_with_dilation: [false, false, false]
+  remove_last_stride: false  # Common in face recognition
+  
+  # Output before the final classification layer
+  feature_dim: 2048

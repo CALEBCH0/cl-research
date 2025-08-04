@@ -1,0 +1,15 @@
+# Experience Replay strategy configuration
+strategy:
+  name: "replay"
+  type: "Replay"
+  
+  # Replay specific parameters
+  mem_size: 5000  # Total memory size
+  batch_size_mem: 10  # Samples from memory per batch
+  storage_policy:
+    type: "reservoir"  # or "class_balanced"
+  
+  # Training parameters  
+  train_mb_size: ${training.batch_size}
+  train_epochs: ${training.epochs_per_experience}
+  eval_mb_size: ${training.eval_batch_size}

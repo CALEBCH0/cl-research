@@ -1,0 +1,9 @@
+# Naive (Fine-tuning) strategy configuration
+strategy:
+  name: "naive"
+  type: "Naive"
+  
+  # No replay or regularization
+  train_mb_size: ${training.batch_size}
+  train_epochs: ${training.epochs_per_experience}
+  eval_mb_size: ${training.eval_batch_size}
