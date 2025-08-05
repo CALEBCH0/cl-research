@@ -97,10 +97,47 @@ def main():
     # from torch.cuda.amp import autocast, GradScaler
     # scaler = GradScaler()
 
+    # Store results for summary
+    all_results = []
+    
     for exp in benchmark.train_stream:
         print(f"\nTraining on experience {exp.current_experience}")
         strategy.train(exp)
-        strategy.eval(benchmark.test_stream)
+        eval_results = strategy.eval(benchmark.test_stream)
+        all_results.append(eval_results)
+    
+    # Print accuracy summary
+    print("\n" + "="*60)
+    print("FINAL ACCURACY SUMMARY")
+    print("="*60)
+    
+    # Get final accuracies for each experience
+    final_accs = []
+    for i in range(benchmark.n_experiences):
+        key = f'Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp{i:03d}'
+        if key in eval_results:
+            acc = eval_results[key]
+            final_accs.append(acc)
+            print(f"Experience {i}: {acc:.4f}")
+    
+    if final_accs:
+        avg_acc = sum(final_accs) / len(final_accs)
+        print(f"\nAverage Accuracy: {avg_acc:.4f}")
+        print(f"Forgetting: {final_accs[0] - final_accs[0]:.4f} (Exp 0 final - initial)")
+        
+        # Show accuracy degradation
+        print("\nAccuracy degradation from first exposure:")
+        for i in range(1, len(final_accs)):
+            if i < len(all_results):
+                # Get exp 0 accuracy after training on exp i
+                key = f'Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000'
+                if key in all_results[i]:
+                    current_exp0_acc = all_results[i][key]
+                    initial_exp0_acc = all_results[0][key] if key in all_results[0] else 0
+                    degradation = initial_exp0_acc - current_exp0_acc
+                    print(f"  After exp {i}: {degradation:.4f} degradation")
+    
+    print("="*60)
 
 
 if __name__ == "__main__":
