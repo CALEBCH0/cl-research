@@ -202,6 +202,75 @@ Results are saved in Hydra output directories with:
 - Metrics (results.yaml)
 - Visualizations (if generated)
 
+## Available Datasets in Avalanche
+
+### Built-in Classic Benchmarks
+**Class-Incremental (Split by classes):**
+- `SplitMNIST` - Handwritten digits (10 classes)
+- `SplitFMNIST` - Fashion items (10 classes)
+- `SplitCIFAR10` - Natural images (10 classes)
+- `SplitCIFAR100` - Natural images (100 classes)
+- `SplitTinyImageNet` - Tiny ImageNet (200 classes)
+- `SplitImageNet` - Full ImageNet (1000 classes)
+- `SplitCUB200` - Birds dataset (200 species)
+- `SplitOmniglot` - Handwritten characters (1623 classes)
+- `SplitInaturalist` - Nature species dataset
+
+**Domain-Incremental (Same classes, different domains):**
+- `PermutedMNIST` - MNIST with pixel permutations
+- `RotatedMNIST` - MNIST with rotations
+
+**Advanced/Specialized:**
+- `CORe50` - 50 objects in 11 contexts
+- `OpenLORIS` - Objects with natural variations
+- `CLStream51` - Stream-51 for online learning
+- `CLEAR` - Real-world imagery with temporal shifts
+- `EndlessCLSim` - Synthetic endless learning
+- `MiniImageNet` - Subset of ImageNet (100 classes)
+
+### Datasets for Face Recognition
+
+**Available through Avalanche/PyTorch:**
+- `CelebA` - 200K celebrity images (better for attribute classification)
+- `LFWPeople` - Limited for recognition (many people have <5 images)
+
+**Recommended External Datasets for Face Recognition:**
+1. **For Quick Testing:**
+   - **Olivetti Faces** - 40 people, 10 images each (via scikit-learn)
+   - **Yale Face Database B** - 38 people, varied lighting
+
+2. **For Real Experiments:**
+   - **VGGFace2** - 3.31M images, 9K identities (need custom loader)
+   - **MS-Celeb-1M** - Large scale (use cleaned versions)
+   - **CASIA-WebFace** - 500K images, 10K identities
+
+### Quick Start with Face Recognition
+
+```python
+# Using Olivetti Faces (recommended for testing)
+from sklearn.datasets import fetch_olivetti_faces
+from avalanche.benchmarks import nc_benchmark
+from avalanche.benchmarks.utils import AvalancheDataset
+from torch.utils.data import TensorDataset
+import torch
+
+# Load and prepare data
+data = fetch_olivetti_faces()
+X = torch.FloatTensor(data.images).unsqueeze(1)
+y = torch.LongTensor(data.target)
+
+# Create Avalanche benchmark
+train_data = AvalancheDataset(TensorDataset(X[:320], y[:320]))
+test_data = AvalancheDataset(TensorDataset(X[320:], y[320:]))
+
+benchmark = nc_benchmark(
+    train_dataset=train_data,
+    test_dataset=test_data,
+    n_experiences=5,
+    task_labels=False
+)
+```
+
 ## Tips
 
 1. **Start Simple**: Use `train_simple.py` or `train_faces_avalanche.py` for initial testing

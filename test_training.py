@@ -12,7 +12,7 @@ class TestTraining(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.device = 'cpu'  # Use CPU for tests
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.seed = 42
         torch.manual_seed(self.seed)
     
@@ -75,7 +75,7 @@ class TestTraining(unittest.TestCase):
         results_naive = run_training(
             benchmark_name='mnist',
             strategy_name='naive',
-            experiences=3,
+            experiences=5,  # Changed from 3 to 5 (10 classes / 5 = 2 classes per exp)
             epochs=1,
             device=self.device,
             verbose=False
@@ -84,7 +84,7 @@ class TestTraining(unittest.TestCase):
         results_replay = run_training(
             benchmark_name='mnist',
             strategy_name='replay',
-            experiences=3,
+            experiences=5,  # Changed from 3 to 5
             epochs=1,
             device=self.device,
             verbose=False
@@ -104,14 +104,14 @@ class TestBatchExperiments(unittest.TestCase):
         """Test running multiple experiments."""
         strategies = ['naive', 'replay']
         results = []
-        
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         for strategy in strategies:
             result = run_training(
                 benchmark_name='mnist',
                 strategy_name=strategy,
                 experiences=2,
                 epochs=1,
-                device='cpu',
+                device=device,
                 verbose=False
             )
             results.append(result)

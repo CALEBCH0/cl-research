@@ -223,9 +223,7 @@ def set_strategy(args, base_kwargs):
     
     return strategy
 
-def main():
-    args = get_args()
-
+def main(args):
     print("="*60)
     print(f"Benchmark: {args.benchmark}")
     print(f"Strategy: {args.strategy}")
@@ -338,4 +336,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = get_args()
+    main(args)

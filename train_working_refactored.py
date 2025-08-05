@@ -18,7 +18,7 @@ from avalanche.training.supervised import (
     Cumulative, JointTraining, ICaRL
 )
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
-from avalanche.logging import InteractiveLogger, TensorboardLogger
+from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger
 from avalanche.training.plugins import EvaluationPlugin
 
 BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
@@ -143,7 +143,16 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     criterion = nn.CrossEntropyLoss()
     
     # Create evaluation plugin (minimal logging if not verbose)
-    loggers = [InteractiveLogger()] if verbose else []
+    if verbose:
+        loggers = [InteractiveLogger()]
+    else:
+        # Use a minimal logger to suppress warning
+        from avalanche.logging import BaseLogger
+        class SilentLogger(BaseLogger):
+            def log_single_metric(self, name, value, x_plot):
+                pass
+        loggers = [SilentLogger()]
+    
     eval_plugin = EvaluationPlugin(
         accuracy_metrics(minibatch=False, epoch=True, experience=True, stream=True),
         loss_metrics(minibatch=False, epoch=True, experience=True, stream=True),
