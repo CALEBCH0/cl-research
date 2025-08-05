@@ -3,6 +3,7 @@ from avalanche.benchmarks.classic import PermutedMNIST
 from avalanche.models.utils import avalanche_model_adaptation
 from avalanche.benchmarks import SplitMNIST
 from avalanche.training import Naive
+from utils.resultparser import *
 
 # Example 1
 print("Example 1: SimpleCNN\n=====================")
@@ -42,7 +43,7 @@ for seed in seeds:
     random.seed(seed)
     
     # config
-    device = torch.device("cude:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     # create model
     model = SimpleMLP(num_classes=10)
@@ -68,8 +69,14 @@ for seed in seeds:
     # train and get results
     for exp in benchmark.train_stream:
         strategy.train(exp)
+        key = 'Top1_Acc_E'
         results.append(strategy.eval(benchmark.test_stream))
 
 print("Results for each seed:")
 for seed, result in zip(seeds, results):
-    print(f"Seed {seed}: {result}")
+    print(f"Seed {seed}:")
+    accuracies = get_accuracies(result)
+    for i, acc in enumerate(accuracies):
+        print(f"Experience {i + 1}: {acc:.4f}")
+    print(f"Average accuracy: {get_average_accuracy(result):.4f}")
+    
