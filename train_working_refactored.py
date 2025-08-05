@@ -3,6 +3,7 @@ import warnings
 warnings.filterwarnings('ignore', message='.*longdouble.*')
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', message='.*OpenSSL.*')
+warnings.filterwarnings('ignore', message='No loggers specified.*')
 
 from collections import namedtuple
 import torch
@@ -18,7 +19,7 @@ from avalanche.training.supervised import (
     Cumulative, JointTraining, ICaRL
 )
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
-from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger
+from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger, BaseLogger
 from avalanche.training.plugins import EvaluationPlugin
 
 BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
@@ -142,13 +143,15 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
     
-    # Create evaluation plugin (minimal logging if not verbose)
+    # Create evaluation plugin
     if verbose:
         loggers = [InteractiveLogger()]
     else:
         # Use a minimal logger to suppress warning
-        from avalanche.logging import BaseLogger
         class SilentLogger(BaseLogger):
+            def log_metrics(self, metrics):
+                pass
+            
             def log_single_metric(self, name, value, x_plot):
                 pass
         loggers = [SilentLogger()]
