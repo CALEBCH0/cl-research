@@ -1,0 +1,1 @@
+python3 train_working.py --benchmark mnist --epochs 2 --experiences 2 --strategy naive

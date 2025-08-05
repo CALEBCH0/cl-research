@@ -6,6 +6,8 @@ warnings.filterwarnings('ignore', message='.*longdouble.*')
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', message='.*OpenSSL.*')
 
+from collections import namedtuple
+
 import torch
 import torch.nn as nn
 from avalanche.benchmarks.classic import SplitMNIST, SplitCIFAR10, SplitFMNIST
@@ -21,46 +23,15 @@ from avalanche.training.supervised import (
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger
 from avalanche.training.plugins import EvaluationPlugin
-import argparse
 
+from utils.argparser import get_args
 
-def main():
-    parser = argparse.ArgumentParser(description='Avalanche CL Training')
-    parser.add_argument('--benchmark', type=str, default='mnist',
-                       choices=['mnist', 'fmnist', 'cifar10', 'lfw', 'celeba'],
-                       help='Benchmark to use')
-    parser.add_argument('--strategy', type=str, default='naive',
-                       choices=['naive', 'ewc', 'replay', 'gem', 'agem', 'lwf', 
-                               'si', 'mas', 'gdumb', 'cumulative', 'joint', 'icarl'],
-                       help='CL strategy')
-    parser.add_argument('--model', type=str, default='mlp',
-                       choices=['mlp', 'cnn'],
-                       help='Model architecture')
-    parser.add_argument('--epochs', type=int, default=2,
-                       help='Epochs per experience')
-    parser.add_argument('--experiences', type=int, default=5,
-                       help='Number of experiences')
-    parser.add_argument('--lr', type=float, default=0.001,
-                       help='Learning rate')
-    parser.add_argument('--batch_size', type=int, default=128,
-                       help='Batch size')
-    parser.add_argument('--device', type=str, 
-                       default='cuda' if torch.cuda.is_available() else 'cpu',
-                       help='Device to use')
-    parser.add_argument('--mem_size', type=int, default=500,
-                       help='Replay buffer size (only for replay strategy)')
-    args = parser.parse_args()
+BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
+
+def set_benchmark(args):
+    """Set the appropriate benchmark based on the command line argument."""
     
-    print("="*60)
-    print(f"Benchmark: {args.benchmark}")
-    print(f"Strategy: {args.strategy}")
-    print(f"Model: {args.model}")
-    print(f"Device: {args.device}")
-    if args.strategy == 'replay':
-        print(f"Replay buffer size: {args.mem_size}")
-    print("="*60)
     
-    # Create benchmark
     if args.benchmark == 'mnist':
         benchmark = SplitMNIST(
             n_experiences=args.experiences,
@@ -176,68 +147,14 @@ def main():
             input_size = 28 * 28
             num_classes = 10
             channels = 1
+            
+    else:
+        raise ValueError(f"Unknown benchmark: {args.benchmark}")
     
-    print(f"\nBenchmark created with {benchmark.n_experiences} experiences")
-    
-    # Create model
-    if args.model == 'mlp':
-        model = SimpleMLP(
-            num_classes=num_classes,
-            input_size=input_size,
-            hidden_size=400,
-            hidden_layers=2
-        )
-    else:  # cnn
-        model = SimpleCNN(
-            num_classes=num_classes,
-            input_channels=channels
-        )
-    
-    model = model.to(args.device)
-    print(f"Model: {model.__class__.__name__}")
-    
-    # Create optimizer and criterion
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    criterion = nn.CrossEntropyLoss()
-    
-    # Create loggers
-    loggers = [InteractiveLogger()]
-    # Optionally add TensorboardLogger
-    # loggers.append(TensorboardLogger())
-    
-    # Create evaluation plugin
-    eval_plugin = EvaluationPlugin(
-        accuracy_metrics(
-            minibatch=True,
-            epoch=True,
-            experience=True,
-            stream=True
-        ),
-        loss_metrics(
-            minibatch=True,
-            epoch=True,
-            experience=True,
-            stream=True
-        ),
-        forgetting_metrics(
-            experience=True,
-            stream=True
-        ),
-        loggers=loggers
-    )
-    
-    # Create strategy
-    base_kwargs = {
-        'model': model,
-        'optimizer': optimizer,
-        'criterion': criterion,
-        'train_mb_size': args.batch_size,
-        'train_epochs': args.epochs,
-        'eval_mb_size': args.batch_size * 2,
-        'device': args.device,
-        'evaluator': eval_plugin
-    }
-    
+    return benchmark, BenchmarkInfo(input_size, num_classes, channels)
+
+def set_strategy(args, base_kwargs):
+    """Set the appropriate strategy based on the command line argument."""
     if args.strategy == 'naive':
         strategy = Naive(**base_kwargs)
     elif args.strategy == 'ewc':
@@ -301,7 +218,89 @@ def main():
             buffer_transform=None,
             fixed_memory=True
         )
+    else:
+        raise ValueError(f"Unknown strategy: {args.strategy}")
     
+    return strategy
+
+def main():
+    args = get_args()
+
+    print("="*60)
+    print(f"Benchmark: {args.benchmark}")
+    print(f"Strategy: {args.strategy}")
+    print(f"Model: {args.model}")
+    print(f"Device: {args.device}")
+    if args.strategy == 'replay':
+        print(f"Replay buffer size: {args.mem_size}")
+    print("="*60)
+    
+    # Create benchmark
+    benchmark, benchmark_info = set_benchmark(args)
+    
+    print(f"\nBenchmark created with {benchmark.n_experiences} experiences")
+    
+    # Create model
+    if args.model == 'mlp':
+        model = SimpleMLP(
+            num_classes=benchmark_info.num_classes,
+            input_size=benchmark_info.input_size,
+            hidden_size=400,
+            hidden_layers=2
+        )
+    else:  # cnn
+        model = SimpleCNN(
+            num_classes=benchmark_info.num_classes,
+            input_channels=benchmark_info.channels
+        )
+    
+    model = model.to(args.device)
+    print(f"Model: {model.__class__.__name__}")
+    
+    # Create optimizer and criterion
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    criterion = nn.CrossEntropyLoss()
+    
+    # Create loggers
+    loggers = [InteractiveLogger()]
+    # Optionally add TensorboardLogger
+    # loggers.append(TensorboardLogger())
+    
+    # Create evaluation plugin
+    eval_plugin = EvaluationPlugin(
+        accuracy_metrics(
+            minibatch=True,
+            epoch=True,
+            experience=True,
+            stream=True
+        ),
+        loss_metrics(
+            minibatch=True,
+            epoch=True,
+            experience=True,
+            stream=True
+        ),
+        forgetting_metrics(
+            experience=True,
+            stream=True
+        ),
+        loggers=loggers
+    )
+    
+    # Create strategy
+    base_kwargs = {
+        'model': model,
+        'optimizer': optimizer,
+        'criterion': criterion,
+        'train_mb_size': args.batch_size,
+        'train_epochs': args.epochs,
+        'eval_mb_size': args.batch_size * 2,
+        'device': args.device,
+        'evaluator': eval_plugin
+    }
+
+    strategy = set_strategy(args, base_kwargs)
+
     print(f"\nStrategy: {strategy.__class__.__name__}")
     
     # Training loop
@@ -310,6 +309,7 @@ def main():
     print("="*60)
     
     results = {}
+    all_metrics = []  # Store all metrics for analysis
     
     for i, train_exp in enumerate(benchmark.train_stream):
         print(f"\n>>> Experience {i+1}/{benchmark.n_experiences}")
