@@ -42,3 +42,6 @@ plotly>=5.14.0
 # Utilities
 psutil>=5.9.0
 requests>=2.28.0
+
+# For SLDA strategy
+qpsolvers[open_source_solvers]>=3.0.0
