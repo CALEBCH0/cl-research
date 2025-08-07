@@ -1,0 +1,54 @@
+# Backbone comparison experiment
+name: backbone_comparison
+description: Compare different backbone architectures for face CL
+
+# Inherit from base
+base_config: ../base/base_config.yaml
+
+# What to compare
+comparison:
+  type: grid  # grid search over all combinations
+  
+  vary:
+    # Different backbones to test
+    model.backbone.name:
+      - resnet18
+      - resnet50
+      - mobilenetv3_small
+      - mobilenetv3_large
+      - efficientnet_b0
+      - efficientnet_b2
+    
+    # Test with different CL strategies
+    strategy.name:
+      - naive  # baseline
+      - replay
+      - ewc
+    
+    # Different memory sizes for replay
+    strategy.params.mem_size:
+      - 500
+      - 1000
+      
+# Fixed settings for this experiment
+fixed:
+  dataset:
+    name: olivetti_faces
+    n_experiences: 10
+    
+  training:
+    epochs_per_experience: 15
+    
+  model:
+    head:
+      type: arcface
+      
+# Evaluation focus
+evaluation:
+  primary_metric: average_accuracy
+  
+  additional_analysis:
+    - plot_backbone_vs_accuracy
+    - plot_model_size_vs_performance
+    - plot_inference_time_comparison
+    - memory_usage_analysis

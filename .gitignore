@@ -55,3 +55,6 @@ Thumbs.db
 
 # WandB
 wandb/
+
+# Claude
+.claude/

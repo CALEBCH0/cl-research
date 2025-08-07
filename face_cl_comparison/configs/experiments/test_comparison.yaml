@@ -1,0 +1,24 @@
+# Simple test comparison
+name: test_comparison
+description: Test backbone and strategy comparison
+
+# What to compare
+comparison:
+  vary:
+    model.backbone.name:
+      - mlp
+      - cnn
+
+# Fixed settings
+fixed:
+  strategy:
+    name: replay
+    params:
+      mem_size: 500
+      
+  dataset:
+    name: mnist  # Using MNIST for testing
+    n_experiences: 5
+    
+  training:
+    epochs_per_experience: 2  # Quick test

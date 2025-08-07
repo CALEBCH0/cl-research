@@ -1,0 +1,93 @@
+# Base configuration template for face recognition CL experiments
+name: face_cl_experiment
+description: Face recognition continual learning experiment
+
+# Experiment settings
+experiment:
+  seed: 42
+  device: cuda
+  num_workers: 4
+  save_results: true
+  output_dir: ./results/${name}
+  
+# Model configuration
+model:
+  backbone:
+    name: resnet50
+    pretrained: true
+    frozen_stages: 0
+  
+  head:
+    type: arcface
+    embedding_dim: 512
+    margin: 0.5
+    scale: 64
+    
+# Dataset configuration  
+dataset:
+  name: olivetti_faces
+  n_experiences: 10
+  n_classes_per_experience: 4
+  
+  # Data loading
+  batch_size: 32
+  num_workers: 4
+  pin_memory: true
+  
+  # Augmentation
+  train_augmentation:
+    random_flip: 0.5
+    color_jitter: 0.2
+    random_rotation: 10
+    
+  test_augmentation:
+    center_crop: true
+    
+# Training configuration
+training:
+  epochs_per_experience: 20
+  
+  optimizer:
+    name: adamw
+    lr: 0.001
+    weight_decay: 0.0001
+    
+  scheduler:
+    name: cosine
+    T_max: 200
+    
+  loss:
+    name: cross_entropy
+    label_smoothing: 0.1
+    
+# CL Strategy configuration
+strategy:
+  name: replay
+  params:
+    mem_size: 500
+    
+# Evaluation configuration
+evaluation:
+  eval_every: 1  # Evaluate after every N experiences
+  
+  metrics:
+    - accuracy
+    - forgetting
+    - backward_transfer
+    - forward_transfer
+    - face_verification_accuracy
+    
+  # Face-specific evaluation
+  face_verification:
+    distance_metric: cosine
+    far_levels: [0.01, 0.001]  # 1%, 0.1% FAR
+    
+# Logging configuration
+logging:
+  use_tensorboard: true
+  use_wandb: false
+  log_every: 10  # Log every N batches
+  
+  wandb:
+    project: face_cl
+    entity: your_username

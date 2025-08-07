@@ -1,28 +1,44 @@
-# Avalanche framework for continual learning
-avalanche-lib>=0.6.0
+# Core dependencies for Face Recognition Continual Learning
+
+# Avalanche framework
+avalanche-lib==0.6.0
 
 # Deep learning frameworks
 torch>=2.0.0
 torchvision>=0.15.0
 
-# Fix for pytorchcv compatibility
-pytorchcv==0.0.67
+# For additional models (EfficientNet, etc.)
+timm>=0.9.0
 
-# Vision models
-timm>=0.9.0  # For various backbone models
+# Computer vision and ML
+opencv-python>=4.8.0
+scikit-learn>=1.2.0
+scipy>=1.10.0
 
-# Experiment tracking and visualization
-tensorboard>=2.11.0
-wandb>=0.15.0
+# Data processing
+numpy>=1.23.0
+pandas>=1.5.0
+Pillow>=9.5.0
+
+# Visualization
 matplotlib>=3.5.0
 seaborn>=0.12.0
 
-# Configuration and utilities
-hydra-core>=1.3.0
-omegaconf>=2.3.0
-pandas>=1.5.0
-numpy>=1.23.0
+# Experiment tracking
+tensorboard>=2.11.0
+wandb>=0.15.0
+
+# Progress bars
 tqdm>=4.65.0
 
-# Evaluation metrics
-scikit-learn>=1.2.0
+# Configuration management
+PyYAML>=6.0
+omegaconf>=2.3.0
+
+# Interactive dashboard (optional)
+streamlit>=1.25.0
+plotly>=5.14.0
+
+# Utilities
+psutil>=5.9.0
+requests>=2.28.0

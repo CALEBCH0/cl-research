@@ -1,0 +1,72 @@
+# NCM-based methods comparison for face recognition
+name: ncm_slda_icarl_comparison
+description: Compare NCM-based methods (SLDA, iCaRL) for face recognition
+
+# What to compare
+comparison:
+  vary:
+    strategy.name:
+      - naive  # baseline
+      - slda   # Streaming LDA with NCM
+      - icarl  # iCaRL with NCM
+      - replay # standard replay for comparison
+
+# Fixed settings
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1
+    
+  strategy:
+    # Strategy-specific params handled by runner
+    params:
+      # For iCaRL
+      mem_size_per_class: 20
+      fixed_memory: true
+      
+      # For SLDA
+      input_size: 1280  # EfficientNet-B1 feature size
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+      # For replay
+      mem_size: 1000  # 50 samples per class for 20 classes
+      
+  dataset:
+    # Using Olivetti Faces - good for testing NCM methods
+    # - 40 people (classes)
+    # - 10 images per person
+    # - Good for NCM because balanced classes
+    name: olivetti
+    n_experiences: 8  # 5 people per experience
+    
+    # Alternative for larger scale:
+    # name: lfw_pairs  # or vggface2_subset
+    # n_classes: 100
+    # n_experiences: 10
+    
+  training:
+    epochs_per_experience: 10
+    batch_size: 16  # Smaller batch for NCM methods
+    
+    # SLDA-specific training settings
+    slda_epochs: 1  # SLDA typically uses 1 epoch
+    
+  evaluation:
+    # NCM-specific metrics
+    compute_class_means: true
+    distance_metric: euclidean  # or cosine
+    
+# Analysis focus
+evaluation:
+  primary_metric: average_accuracy
+  
+  ncm_specific_analysis:
+    - plot_class_mean_distances
+    - plot_feature_space_visualization
+    - memory_efficiency_comparison
+    
+  expected_insights:
+    - SLDA should be fastest (no backprop)
+    - iCaRL should have best accuracy-memory tradeoff
+    - All NCM methods should be more stable than softmax

@@ -1,4 +1,4 @@
-"""Refactored training script for easy importing and testing."""
+"""Extended training script with EfficientNet, Olivetti, and SLDA support."""
 import warnings
 warnings.filterwarnings('ignore', message='.*longdouble.*')
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -16,7 +16,7 @@ from avalanche.models import SimpleMLP, SimpleCNN
 from avalanche.training.supervised import (
     Naive, EWC, Replay, GEM, AGEM, LwF, 
     SynapticIntelligence as SI, MAS, GDumb,
-    Cumulative, JointTraining, ICaRL
+    Cumulative, JointTraining, ICaRL, StreamingLDA
 )
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger, BaseLogger
@@ -55,6 +55,49 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         input_size = 32 * 32 * 3
         num_classes = 10
         channels = 3
+    elif benchmark_name == 'olivetti':
+        # Olivetti Faces dataset
+        from sklearn.datasets import fetch_olivetti_faces
+        import numpy as np
+        from torch.utils.data import TensorDataset
+        
+        # Load Olivetti faces
+        olivetti = fetch_olivetti_faces(shuffle=True, random_state=seed)
+        X = olivetti.images  # Shape: (400, 64, 64)
+        y = olivetti.target  # Shape: (400,)
+        
+        # Convert to torch tensors
+        X = torch.FloatTensor(X).unsqueeze(1)  # Add channel dimension
+        y = torch.LongTensor(y)
+        
+        # Split train/test (80/20)
+        n_samples = len(X)
+        n_train = int(0.8 * n_samples)
+        indices = torch.randperm(n_samples)
+        
+        train_indices = indices[:n_train]
+        test_indices = indices[n_train:]
+        
+        train_dataset = AvalancheDataset(
+            TensorDataset(X[train_indices], y[train_indices])
+        )
+        test_dataset = AvalancheDataset(
+            TensorDataset(X[test_indices], y[test_indices])
+        )
+        
+        # Create benchmark
+        benchmark = nc_benchmark(
+            train_dataset=train_dataset,
+            test_dataset=test_dataset,
+            n_experiences=experiences,
+            task_labels=False,
+            seed=seed,
+            class_ids_from_zero_in_each_exp=True
+        )
+        
+        input_size = 64 * 64
+        num_classes = 40  # 40 people in Olivetti
+        channels = 1
     else:
         raise ValueError(f"Unknown benchmark: {benchmark_name}")
     
@@ -70,7 +113,7 @@ def create_model(model_type, benchmark_info):
             hidden_size=400,
             hidden_layers=2
         )
-    else:  # cnn
+    elif model_type == 'cnn':
         # SimpleCNN expects 3 channels, but MNIST has 1
         # For MNIST/Fashion-MNIST, we need a different approach
         if benchmark_info.channels == 1:
@@ -88,7 +131,13 @@ def create_model(model_type, benchmark_info):
                         nn.MaxPool2d(2),
                         nn.Flatten()
                     )
-                    self.classifier = nn.Linear(64 * 7 * 7, num_classes)
+                    # Adjust for different input sizes
+                    if benchmark_info.input_size == 28 * 28:  # MNIST
+                        self.classifier = nn.Linear(64 * 7 * 7, num_classes)
+                    elif benchmark_info.input_size == 64 * 64:  # Olivetti
+                        self.classifier = nn.Linear(64 * 16 * 16, num_classes)
+                    else:
+                        self.classifier = nn.Linear(64 * 7 * 7, num_classes)
                 
                 def forward(self, x):
                     x = self.features(x)
@@ -99,6 +148,41 @@ def create_model(model_type, benchmark_info):
             model = SimpleCNN(
                 num_classes=benchmark_info.num_classes
             )
+    elif model_type.startswith('efficientnet'):
+        # EfficientNet support
+        try:
+            import timm
+            
+            # For SLDA, we need a feature extractor
+            if benchmark_info.channels == 1:
+                # Convert grayscale to RGB by repeating channels
+                class GrayToRGBWrapper(nn.Module):
+                    def __init__(self, model):
+                        super().__init__()
+                        self.model = model
+                    
+                    def forward(self, x):
+                        x = x.repeat(1, 3, 1, 1)  # Convert 1 channel to 3
+                        return self.model(x)
+                
+                base_model = timm.create_model(
+                    model_type.replace('_', '-'),  # efficientnet_b1 -> efficientnet-b1
+                    pretrained=True,
+                    num_classes=benchmark_info.num_classes
+                )
+                model = GrayToRGBWrapper(base_model)
+            else:
+                model = timm.create_model(
+                    model_type.replace('_', '-'),
+                    pretrained=True,
+                    num_classes=benchmark_info.num_classes
+                )
+        except ImportError:
+            print("timm not installed. Using CNN instead.")
+            return create_model('cnn', benchmark_info)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+    
     return model
 
 
@@ -140,13 +224,69 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         return JointTraining(**base_kwargs)
     elif strategy_name == 'icarl':
         return ICaRL(**base_kwargs, mem_size_per_class=20, buffer_transform=None, fixed_memory=True)
+    elif strategy_name == 'slda':
+        # SLDA requires special setup
+        from avalanche.models import FeatureExtractorBackbone
+        
+        # Extract feature size based on model
+        if hasattr(model, 'fc'):
+            feature_size = model.fc.in_features
+        elif hasattr(model, 'classifier'):
+            if isinstance(model.classifier, nn.Linear):
+                feature_size = model.classifier.in_features
+            else:
+                # Find last linear layer
+                for module in reversed(list(model.classifier.modules())):
+                    if isinstance(module, nn.Linear):
+                        feature_size = module.in_features
+                        break
+        else:
+            feature_size = 512  # default
+        
+        # Wrap model as feature extractor
+        if not isinstance(model, FeatureExtractorBackbone):
+            # Create a feature extractor from the model
+            class FeatureExtractor(nn.Module):
+                def __init__(self, base_model):
+                    super().__init__()
+                    self.base_model = base_model
+                    # Remove the last layer
+                    if hasattr(base_model, 'fc'):
+                        self.base_model.fc = nn.Identity()
+                    elif hasattr(base_model, 'classifier'):
+                        if isinstance(base_model.classifier, nn.Sequential):
+                            self.base_model.classifier[-1] = nn.Identity()
+                        else:
+                            self.base_model.classifier = nn.Identity()
+                
+                def forward(self, x):
+                    return self.base_model(x)
+            
+            feature_extractor = FeatureExtractor(model)
+            feature_extractor = feature_extractor.to(device)
+        
+        # SLDA doesn't use optimizer/criterion in the same way
+        slda_kwargs = {
+            'slda_model': feature_extractor,
+            'criterion': criterion,
+            'input_size': feature_size,
+            'num_classes': kwargs.get('num_classes', 10),
+            'shrinkage_param': 1e-4,
+            'streaming_update_sigma': True,
+            'train_mb_size': kwargs.get('batch_size', 32),
+            'eval_mb_size': kwargs.get('batch_size', 32) * 2,
+            'device': device,
+            'evaluator': eval_plugin,
+            'train_epochs': 1  # SLDA typically uses 1 epoch
+        }
+        return StreamingLDA(**slda_kwargs)
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}")
 
 
 def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp',
                 device='cuda', experiences=5, epochs=1, batch_size=32, 
-                mem_size=200, lr=0.001, seed=42, verbose=True):
+                mem_size=200, lr=0.001, seed=42, verbose=True, **kwargs):
     """
     Run a complete training experiment and return results.
     
@@ -190,7 +330,8 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     # Create strategy
     strategy = create_strategy(
         strategy_name, model, optimizer, criterion, device, eval_plugin,
-        mem_size=mem_size, epochs=epochs, batch_size=batch_size
+        mem_size=mem_size, epochs=epochs, batch_size=batch_size,
+        num_classes=benchmark_info.num_classes
     )
     
     # Training loop
