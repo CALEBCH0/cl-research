@@ -78,14 +78,13 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         train_indices = indices[:n_train]
         test_indices = indices[n_train:]
         
-        train_dataset = AvalancheDataset(
-            TensorDataset(X[train_indices], y[train_indices]),
-            task_labels=torch.zeros(len(train_indices), dtype=torch.long)
-        )
-        test_dataset = AvalancheDataset(
-            TensorDataset(X[test_indices], y[test_indices]),
-            task_labels=torch.zeros(len(test_indices), dtype=torch.long)
-        )
+        # Create TensorDatasets
+        train_tensor_dataset = TensorDataset(X[train_indices], y[train_indices])
+        test_tensor_dataset = TensorDataset(X[test_indices], y[test_indices])
+        
+        # Wrap in AvalancheDataset
+        train_dataset = AvalancheDataset(train_tensor_dataset)
+        test_dataset = AvalancheDataset(test_tensor_dataset)
         
         # Create benchmark
         benchmark = nc_benchmark(
