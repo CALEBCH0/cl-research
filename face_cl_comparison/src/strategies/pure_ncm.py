@@ -114,7 +114,7 @@ class PureNCM(SupervisedTemplate):
     
     def training_epoch(self, **kwargs):
         """Custom training epoch that only updates class means."""
-        for i, batch in enumerate(self.dataloader):
+        for i, self.mbatch in enumerate(self.dataloader):
             self._unpack_minibatch()
             
             # Extract features (no gradients needed)
