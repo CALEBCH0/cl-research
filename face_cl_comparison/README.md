@@ -9,7 +9,7 @@ A flexible framework for comparing continual learning strategies on face recogni
 - **Face Recognition Datasets**: 
   - Olivetti Faces (40 identities) - Quick testing
   - LFW - Labeled Faces in the Wild (158+ identities) - Real-world conditions
-  - Custom LFW subsets (e.g., lfw_100 for 100 identities)
+  - Custom LFW subsets (e.g., lfw_50, lfw_100, lfw_200)
 - **Efficient Experimentation**: YAML-based configuration, multi-seed evaluation, automatic result aggregation
 
 ## Installation
@@ -36,6 +36,9 @@ pip install -r requirements.txt
 # Run with larger LFW dataset
 python runner.py --exp lfw_comparison
 
+# Run large-scale face comparison across dataset sizes
+python runner.py --exp large_scale_faces
+
 # Or directly with Python
 python runner.py --exp NCM_SLDA_iCaRL
 ```
@@ -45,10 +48,12 @@ python runner.py --exp NCM_SLDA_iCaRL
 | Dataset | Identities | Images | Use Case |
 |---------|------------|---------|----------|
 | `olivetti` | 40 | 400 | Quick tests, prototyping |
-| `lfw_50` | 50 | ~1,000 | Small-scale experiments |
-| `lfw_100` | 100 | ~2,000 | Medium-scale experiments |
-| `lfw_200` | 200 | ~4,000 | Large-scale experiments |
-| `lfw` | 158+ | ~13,000 | Full LFW (20+ imgs/person) |
+| `lfw_50` | 50 | ~750+ | Small-scale experiments |
+| `lfw_100` | 100 | ~1,500+ | Medium-scale experiments |
+| `lfw_200` | 200 | ~3,000+ | Large-scale experiments |
+| `lfw` | 158+ | ~13,000 | Full LFW (min 20 imgs/person) |
+
+**Note**: LFW dataset will be automatically downloaded on first use. The resize issue with sklearn's `fetch_lfw_people` has been fixed - it now properly accepts resize as a float ratio.
 
 ## Flexible Plugin System
 
@@ -248,14 +253,20 @@ face_cl_comparison/
 
 1. **Debug Mode**: Set `debug: true` for quick testing with single seed
 2. **Plugin Warnings**: Some plugin combinations may show warnings (e.g., SLDA with Replay) but still work
-3. **Memory Size**: For NCM methods, ensure sufficient memory (e.g., 20 samples per class)
-4. **Face Datasets**: Olivetti (40 classes) is good for quick tests, use larger datasets for production
+3. **Memory Size**: For NCM methods, ensure sufficient memory (e.g., 10+ samples per class)
+4. **Face Datasets**: 
+   - Olivetti (40 classes) - Fast prototyping and algorithm testing
+   - LFW subsets (50-200 classes) - Scalability testing
+   - Full LFW (158+ classes) - Real-world performance evaluation
+5. **LFW Configuration**: Adjust `min_faces_per_person` to control dataset size vs. identity diversity trade-off
 
 ## Common Issues
 
 1. **iCaRL Poor Performance**: Fixed by ensuring correct class ID handling (`class_ids_from_zero_in_each_exp=False`)
 2. **Plugin Compatibility**: Some strategies (like SLDA) may warn about incompatible callbacks but still function
 3. **Memory Requirements**: EfficientNet models require significant GPU memory
+4. **LFW Resize Error**: Fixed - sklearn's `fetch_lfw_people` expects resize as a float ratio (e.g., 0.256 for 64x64 from 250x250)
+5. **Dataset Download**: LFW will automatically download (~200MB) on first use
 
 ## Contributing
 

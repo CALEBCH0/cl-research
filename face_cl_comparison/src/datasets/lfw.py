@@ -25,9 +25,13 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     print(f"Loading LFW dataset (min {min_faces_per_person} faces per person)...")
     
     # Fetch LFW data
+    # Note: sklearn's fetch_lfw_people expects resize as a float ratio, not tuple
+    # Default LFW images are 250x250, so we calculate the ratio
+    resize_ratio = image_size[0] / 250.0  # Assuming square images
+    
     lfw_people = fetch_lfw_people(
         min_faces_per_person=min_faces_per_person,
-        resize=image_size,
+        resize=resize_ratio,
         color=False,  # Grayscale for consistency with Olivetti
         funneled=True,  # Use aligned faces
         download_if_missing=True,
@@ -42,7 +46,7 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     n_samples = len(X)
     
     print(f"Loaded {n_samples} images of {n_classes} people")
-    print(f"Image shape: {X[0].shape}")
+    print(f"Image shape: {X[0].shape} (requested: {image_size})")
     print(f"People included: {lfw_people.target_names[:5]}... ({n_classes} total)")
     
     # Convert to torch tensors
@@ -51,6 +55,12 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     
     # Normalize to [0, 1]
     X = X / 255.0
+    
+    # Ensure exact size if needed (sklearn might give slightly different size)
+    if X.shape[2:] != image_size:
+        import torch.nn.functional as F
+        X = F.interpolate(X, size=image_size, mode='bilinear', align_corners=False)
+        print(f"Resized images to exact size: {image_size}")
     
     # Split train/test per class to ensure all classes in both sets
     train_indices = []
