@@ -1,0 +1,84 @@
+# Test flexible plugin configuration
+name: flexible_plugins
+description: Test flexible strategy-specific plugin configurations
+
+# New format: each strategy can have its own plugins
+comparison:
+  strategies:
+    # Simple strategies without plugins
+    - naive
+    
+    # Pure NCM with replay (though it won't help since no training)
+    - name: pure_ncm
+      plugins: []
+    
+    - name: pure_ncm_replay
+      base: pure_ncm
+      plugins:
+        - name: replay
+          params:
+            mem_size: 200
+    
+    # SLDA variants
+    - name: slda
+      plugins: []
+    
+    - name: slda_replay
+      base: slda
+      plugins:
+        - name: replay
+          params:
+            mem_size: 400
+            storage_policy: class_balanced
+    
+    # iCaRL (has built-in replay)
+    - name: icarl
+      plugins: []
+    
+    # EWC with multiple plugins
+    - name: ewc
+      plugins: []
+      
+    - name: ewc_replay
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 200
+            
+    - name: ewc_full
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 200
+        - name: lwf
+          params:
+            alpha: 0.5
+            temperature: 2.0
+    
+    # Replay baseline
+    - name: replay
+      plugins: []
+
+# Fixed settings
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1
+    
+  dataset:
+    name: olivetti
+    n_experiences: 8
+    
+  training:
+    epochs_per_experience: 5
+    batch_size: 16
+    lr: 0.001
+    
+    # Debug mode for testing
+    debug: true
+    seed: 42
+    
+  evaluation:
+    primary_metric: average_accuracy

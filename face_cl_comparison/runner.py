@@ -25,9 +25,46 @@ def generate_runs(config):
     """Generate run configurations from comparison config."""
     runs = []
     
-    if 'comparison' in config and 'vary' in config['comparison']:
-        # Grid search over parameters
+    # Check for new strategies format
+    if 'comparison' in config and 'strategies' in config['comparison']:
+        # New format: each strategy has its own plugin config
+        strategies = config['comparison']['strategies']
         
+        for strategy_config in strategies:
+            if isinstance(strategy_config, str):
+                # Simple strategy name
+                run_config = {
+                    'name': strategy_config,
+                    'strategy': strategy_config,
+                    'plugins': []
+                }
+            else:
+                # Strategy with configuration
+                strategy_name = strategy_config.get('name')
+                base_strategy = strategy_config.get('base', strategy_name)
+                plugins = strategy_config.get('plugins', [])
+                
+                # Create readable name
+                if plugins:
+                    plugin_names = "+".join([p['name'] if isinstance(p, dict) else p for p in plugins])
+                    display_name = f"{strategy_name}_{plugin_names}"
+                else:
+                    display_name = strategy_name
+                
+                run_config = {
+                    'name': display_name,
+                    'strategy': base_strategy,
+                    'plugins': plugins
+                }
+                
+                # Add any extra parameters
+                if 'params' in strategy_config:
+                    run_config.update(strategy_config['params'])
+            
+            runs.append(run_config)
+    
+    elif 'comparison' in config and 'vary' in config['comparison']:
+        # Original format: grid search over parameters
         vary_params = config['comparison']['vary']
         param_names = list(vary_params.keys())
         param_values = list(vary_params.values())
