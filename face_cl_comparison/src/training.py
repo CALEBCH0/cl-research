@@ -86,11 +86,14 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         train_tensor_dataset.targets = y[train_indices].tolist()
         test_tensor_dataset.targets = y[test_indices].tolist()
         
-        # Wrap in AvalancheDataset
-        train_dataset = AvalancheDataset(train_tensor_dataset)
-        test_dataset = AvalancheDataset(test_tensor_dataset)
+        # Import as_classification_dataset
+        from avalanche.benchmarks.utils import as_classification_dataset
         
-        # Create benchmark
+        # Convert to classification datasets
+        train_dataset = as_classification_dataset(train_tensor_dataset)
+        test_dataset = as_classification_dataset(test_tensor_dataset)
+        
+        # Create benchmark using nc_benchmark
         benchmark = nc_benchmark(
             train_dataset=train_dataset,
             test_dataset=test_dataset,
