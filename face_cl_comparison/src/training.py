@@ -62,7 +62,7 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         from torch.utils.data import TensorDataset
         
         # Load Olivetti faces
-        olivetti = fetch_olivetti_faces(shuffle=True, random_state=seed)
+        olivetti = fetch_olivetti_faces(shuffle=False)  # Don't shuffle, we'll do it manually
         X = olivetti.images  # Shape: (400, 64, 64)
         y = olivetti.target  # Shape: (400,)
         
@@ -70,13 +70,26 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         X = torch.FloatTensor(X).unsqueeze(1)  # Add channel dimension
         y = torch.LongTensor(y)
         
-        # Split train/test (80/20)
-        n_samples = len(X)
-        n_train = int(0.8 * n_samples)
-        indices = torch.randperm(n_samples)
+        # Split train/test per class to ensure all classes are in both sets
+        train_indices = []
+        test_indices = []
         
-        train_indices = indices[:n_train]
-        test_indices = indices[n_train:]
+        # Olivetti has 10 images per person, split 8 train / 2 test per person
+        for person_id in range(40):
+            # Get indices for this person
+            person_indices = torch.where(y == person_id)[0]
+            # Shuffle indices for this person
+            perm = torch.randperm(len(person_indices), generator=torch.Generator().manual_seed(seed + person_id))
+            shuffled_indices = person_indices[perm]
+            
+            # Split 80/20 for this person
+            n_train_person = int(0.8 * len(shuffled_indices))
+            train_indices.extend(shuffled_indices[:n_train_person].tolist())
+            test_indices.extend(shuffled_indices[n_train_person:].tolist())
+        
+        # Convert to tensors
+        train_indices = torch.tensor(train_indices)
+        test_indices = torch.tensor(test_indices)
         
         # Create TensorDatasets
         train_tensor_dataset = TensorDataset(X[train_indices], y[train_indices])
