@@ -8,6 +8,7 @@ import traceback
 import yaml
 from pathlib import Path
 from datetime import datetime
+import numpy as np
 import pandas as pd
 import torch
 from src.training import run_training
@@ -91,69 +92,126 @@ def main():
     output_dir = Path('results') / f"{config.get('name', 'exp')}_{timestamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Determine if we're in debug mode
+    training_config = config.get('fixed', {}).get('training', {})
+    debug_mode = training_config.get('debug', True)
+    
+    if debug_mode:
+        # Single seed for debugging
+        seeds = [training_config.get('seed', 42)]
+        print("\n🐛 DEBUG MODE: Running with single seed")
+    else:
+        # Multiple seeds for evaluation
+        seeds = training_config.get('seeds', [42, 123, 456, 789, 1011])
+        print(f"\n📊 EVALUATION MODE: Running with {len(seeds)} seeds")
+    
     # Run experiments
-    results = []
+    all_results = []
+    
     for i, run_config in enumerate(runs):
         print(f"\n[{i+1}/{len(runs)}] Running: {run_config['name']}")
         
-        try:
-            # Map to run_training parameters
-            # Check CUDA availability
-            if args.gpu >= 0 and torch.cuda.is_available():
-                device = f'cuda:{args.gpu}'
+        run_results_by_seed = []
+        
+        for seed_idx, seed in enumerate(seeds):
+            if not debug_mode:
+                print(f"  Seed {seed_idx+1}/{len(seeds)}: {seed}")
+            
+            try:
+                # Map to run_training parameters
+                # Check CUDA availability
+                if args.gpu >= 0 and torch.cuda.is_available():
+                    device = f'cuda:{args.gpu}'
+                else:
+                    device = 'cpu'
+                    if args.gpu >= 0 and seed_idx == 0:  # Only warn once
+                        print(f"Warning: CUDA not available, using CPU instead")
+                
+                # Get fixed settings
+                fixed = config.get('fixed', {})
+                strategy_config = fixed.get('strategy', {})
+                
+                # Get model name from fixed config if not in run_config
+                model_name = run_config.get('model')
+                if not model_name and 'model' in fixed:
+                    model_name = fixed['model'].get('backbone', {}).get('name', 'mlp')
+                
+                # Get dataset name
+                dataset_name = fixed.get('dataset', {}).get('name', 'mnist')
+                if dataset_name == 'splitmnist':
+                    dataset_name = 'mnist'
+                
+                result = run_training(
+                    benchmark_name=dataset_name,
+                    strategy_name=strategy_config.get('name', run_config.get('strategy', 'naive')),
+                    model_type=model_name or 'mlp',
+                    device=device,
+                    experiences=fixed.get('dataset', {}).get('n_experiences', 5),
+                    epochs=fixed.get('training', {}).get('epochs_per_experience', 10),
+                    batch_size=fixed.get('training', {}).get('batch_size', 32),
+                    mem_size=strategy_config.get('params', {}).get('mem_size', run_config.get('mem_size', 500)),
+                    lr=0.001,
+                    seed=seed,
+                    verbose=debug_mode  # Only verbose in debug mode
+                )
+                
+                # Add run info to result
+                result['run_name'] = run_config['name']
+                result['model_name'] = run_config.get('model', 'mlp')
+                result['seed'] = seed
+                run_results_by_seed.append(result)
+                
+            except Exception as e:
+                print(f"Error in run {run_config['name']} with seed {seed}: {str(e)}")
+                if debug_mode:
+                    print(f"Error type: {type(e).__name__}")
+                    print("Traceback:")
+                    traceback.print_exc()
+                continue
+        
+        # Aggregate results for this run
+        if run_results_by_seed:
+            if debug_mode:
+                # Single seed - just add the result
+                all_results.extend(run_results_by_seed)
             else:
-                device = 'cpu'
-                if args.gpu >= 0:
-                    print(f"Warning: CUDA not available, using CPU instead")
-            
-            # Get fixed settings
-            fixed = config.get('fixed', {})
-            strategy_config = fixed.get('strategy', {})
-            
-            # Get model name from fixed config if not in run_config
-            model_name = run_config.get('model')
-            if not model_name and 'model' in fixed:
-                model_name = fixed['model'].get('backbone', {}).get('name', 'mlp')
-            
-            # Get dataset name
-            dataset_name = fixed.get('dataset', {}).get('name', 'mnist')
-            if dataset_name == 'splitmnist':
-                dataset_name = 'mnist'
-            
-            result = run_training(
-                benchmark_name=dataset_name,
-                strategy_name=strategy_config.get('name', run_config.get('strategy', 'naive')),
-                model_type=model_name or 'mlp',
-                device=device,
-                experiences=fixed.get('dataset', {}).get('n_experiences', 5),
-                epochs=fixed.get('training', {}).get('epochs_per_experience', 10),
-                batch_size=fixed.get('training', {}).get('batch_size', 32),
-                mem_size=strategy_config.get('params', {}).get('mem_size', run_config.get('mem_size', 500)),
-                lr=0.001,
-                verbose=True
-            )
-            
-            # Add run info to result
-            result['run_name'] = run_config['name']
-            result['model_name'] = run_config.get('model', 'mlp')
-            results.append(result)
-            
-        except Exception as e:
-            print(f"Error in run {run_config['name']}: {str(e)}")
-            print(f"Error type: {type(e).__name__}")
-            print("Traceback:")
-            traceback.print_exc()
-            continue
+                # Multiple seeds - compute statistics
+                accuracies = [r['average_accuracy'] for r in run_results_by_seed]
+                mean_acc = np.mean(accuracies)
+                std_acc = np.std(accuracies)
+                
+                # Create aggregated result
+                agg_result = {
+                    'run_name': run_config['name'],
+                    'strategy': run_results_by_seed[0]['strategy'],
+                    'model': run_results_by_seed[0]['model'],
+                    'average_accuracy': mean_acc,
+                    'accuracy_std': std_acc,
+                    'accuracy_mean': mean_acc,
+                    'num_seeds': len(accuracies),
+                    'individual_accuracies': accuracies
+                }
+                all_results.append(agg_result)
+                
+                print(f"  → {run_config['name']}: {mean_acc:.3f} ± {std_acc:.3f}")
     
     # Save results
-    if results:
-        df = pd.DataFrame(results)
+    if all_results:
+        df = pd.DataFrame(all_results)
         df.to_csv(output_dir / 'results.csv', index=False)
         
         print(f"\n{'='*60}")
         print("RESULTS SUMMARY")
         print('='*60)
-        print(df[['run_name', 'strategy', 'model', 'average_accuracy']].to_string(index=False))
+        
+        if debug_mode:
+            # Single seed - show simple table
+            print(df[['run_name', 'strategy', 'model', 'average_accuracy']].to_string(index=False))
+        else:
+            # Multiple seeds - show mean ± std
+            for _, row in df.iterrows():
+                print(f"{row['run_name']:<15} {row['strategy']:<10} {row['model']:<15} "
+                      f"{row['accuracy_mean']:.3f} ± {row['accuracy_std']:.3f}")
         
         print(f"\nResults saved to: {output_dir}")
 

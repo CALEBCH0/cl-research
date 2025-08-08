@@ -49,6 +49,11 @@ fixed:
     epochs_per_experience: 10
     batch_size: 16  # Smaller batch for NCM methods
     
+    # Debug mode: true = single seed (fast), false = multi-seed (robust)
+    debug: true
+    seed: 42  # Used when debug=true
+    seeds: [42, 123, 456, 789, 1011]  # Used when debug=false
+    
     # SLDA-specific training settings
     slda_epochs: 1  # SLDA typically uses 1 epoch
     
