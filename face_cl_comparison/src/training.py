@@ -18,7 +18,7 @@ from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import AvalancheDataset, as_classification_dataset
 from avalanche.benchmarks.scenarios.dataset_scenario import benchmark_from_datasets
 from torchvision import datasets, transforms
-from avalanche.models import SimpleMLP, SimpleCNN, FeatureExtractorBackbone
+from avalanche.models import SimpleMLP, SimpleCNN, FeatureExtractorBackbone, MobilenetV1
 from avalanche.training.supervised import (
     Naive, EWC, Replay, GEM, AGEM, LwF, 
     SynapticIntelligence as SI, MAS, GDumb,
@@ -178,17 +178,33 @@ def create_model(model_type, benchmark_info):
             model = SimpleCNN(
                 num_classes=benchmark_info.num_classes
             )
+    elif model_type == 'mobilenetv1':
+        # Use Avalanche's MobileNetV1
+        model = MobilenetV1(num_classes=benchmark_info.num_classes)
+        # MobileNetV1 expects 3 channels, wrap for grayscale
+        if benchmark_info.channels == 1:
+            class GrayToRGBWrapper(nn.Module):
+                def __init__(self, model):
+                    super().__init__()
+                    self.model = model
+                
+                def forward(self, x):
+                    x = x.repeat(1, 3, 1, 1)  # Convert 1 channel to 3
+                    return self.model(x)
+            model = GrayToRGBWrapper(model)
     elif model_type.startswith('efficientnet') or model_type.startswith('resnet') or \
-         model_type.startswith('mobilenet') or model_type in ['resnet18', 'resnet50', 
-         'mobilenetv3_small', 'mobilenetv3_large']:
+         model_type.startswith('mobilenet') or model_type in ['resnet18', 'resnet50']:
         # timm model support (EfficientNet, ResNet, MobileNet, etc.)
         if not TIMM_AVAILABLE:
             print(f"timm not installed. Cannot create {model_type}.")
             return create_model('cnn', benchmark_info)
         
-        # Convert underscores to hyphens for some model names if needed
-        # timm uses different naming conventions
+        # Fix MobileNetV3 names for timm
         timm_model_name = model_type
+        if model_type == 'mobilenetv3_small':
+            timm_model_name = 'mobilenetv3_small_100'
+        elif model_type == 'mobilenetv3_large':
+            timm_model_name = 'mobilenetv3_large_100'
         
         # Handle grayscale images (MNIST, Fashion-MNIST, Olivetti)
         if benchmark_info.channels == 1:
@@ -272,30 +288,40 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
                 
             elif 'mobilenet' in model_type:
                 # For MobileNet models
-                # Remove classifier and add pooling if needed
-                if hasattr(actual_model, 'features'):
+                if model_type == 'mobilenetv1':
+                    # Avalanche's MobileNetV1 has a specific structure
+                    # Extract all layers except the final classifier
+                    self.features = nn.Sequential(
+                        actual_model.features,
+                        nn.AdaptiveAvgPool2d(1),
+                        nn.Flatten()
+                    )
+                    # MobileNetV1 has 1024 features before the classifier
+                    self.num_features = 1024
+                elif hasattr(actual_model, 'features'):
+                    # Standard MobileNet structure (V2, V3, etc.)
                     self.features = nn.Sequential(
                         actual_model.features,
                         actual_model.avgpool if hasattr(actual_model, 'avgpool') else nn.AdaptiveAvgPool2d(1),
                         nn.Flatten()
                     )
+                    # Get feature dimension from classifier
+                    if hasattr(actual_model, 'classifier'):
+                        if isinstance(actual_model.classifier, nn.Sequential):
+                            # Find the first Linear layer in classifier
+                            for module in actual_model.classifier:
+                                if isinstance(module, nn.Linear):
+                                    self.num_features = module.in_features
+                                    break
+                        else:
+                            self.num_features = actual_model.classifier.in_features
+                    else:
+                        self.num_features = 1280  # Default for MobileNetV3
                 else:
-                    # MobileNetV3 structure
+                    # Alternative MobileNet structure
                     modules = list(actual_model.children())[:-1]
                     self.features = nn.Sequential(*modules, nn.Flatten())
-                
-                # Get feature dimension
-                if hasattr(actual_model, 'classifier'):
-                    if isinstance(actual_model.classifier, nn.Sequential):
-                        # Find the first Linear layer in classifier
-                        for module in actual_model.classifier:
-                            if isinstance(module, nn.Linear):
-                                self.num_features = module.in_features
-                                break
-                    else:
-                        self.num_features = actual_model.classifier.in_features
-                else:
-                    self.num_features = 1280  # Default for MobileNetV3
+                    self.num_features = 1280  # Default
             else:
                 raise ValueError(f"Unsupported model type for feature extraction: {model_type}")
         

@@ -8,8 +8,9 @@ comparison:
   vary:
     model.backbone.name:
       # Lightweight models
-      - mobilenetv3_small   # ~2.5M params
-      - mobilenetv3_large   # ~5.4M params
+      - mobilenetv1         # ~4.2M params (Avalanche)
+      - mobilenetv3_small   # ~2.5M params (timm: mobilenetv3_small_100)
+      - mobilenetv3_large   # ~5.4M params (timm: mobilenetv3_large_100)
       - efficientnet_b0     # ~5.3M params
       
       # Medium models
@@ -62,6 +63,7 @@ fixed:
 
 # Model specifications for reference
 # Feature dimensions (important for SLDA):
+# - MobileNetV1: 1024
 # - MobileNetV3-Small: 576
 # - MobileNetV3-Large: 960
 # - EfficientNet-B0: 1280
