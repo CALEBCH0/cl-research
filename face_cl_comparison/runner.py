@@ -151,7 +151,7 @@ def main():
                     epochs=fixed.get('training', {}).get('epochs_per_experience', 10),
                     batch_size=fixed.get('training', {}).get('batch_size', 32),
                     mem_size=strategy_config.get('params', {}).get('mem_size', run_config.get('mem_size', 500)),
-                    lr=0.001,
+                    lr=fixed.get('training', {}).get('lr', 0.001),
                     seed=seed,
                     verbose=debug_mode  # Only verbose in debug mode
                 )
