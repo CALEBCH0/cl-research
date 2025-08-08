@@ -78,13 +78,19 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         train_indices = indices[:n_train]
         test_indices = indices[n_train:]
         
-        # Create TensorDatasets
-        train_tensor_dataset = TensorDataset(X[train_indices], y[train_indices])
-        test_tensor_dataset = TensorDataset(X[test_indices], y[test_indices])
+        # Create custom dataset class with targets attribute
+        class OlivettiFacesDataset(TensorDataset):
+            def __init__(self, data, targets):
+                super().__init__(data, targets)
+                self.targets = targets
+        
+        # Create datasets with targets attribute
+        train_dataset = OlivettiFacesDataset(X[train_indices], y[train_indices])
+        test_dataset = OlivettiFacesDataset(X[test_indices], y[test_indices])
         
         # Wrap in AvalancheDataset
-        train_dataset = AvalancheDataset(train_tensor_dataset)
-        test_dataset = AvalancheDataset(test_tensor_dataset)
+        train_dataset = AvalancheDataset(train_dataset)
+        test_dataset = AvalancheDataset(test_dataset)
         
         # Create benchmark
         benchmark = nc_benchmark(
