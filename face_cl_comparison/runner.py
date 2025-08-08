@@ -6,12 +6,30 @@ import argparse
 import itertools
 import traceback
 import yaml
+import threading
+import sys
 from pathlib import Path
 from datetime import datetime
 import numpy as np
 import pandas as pd
 import torch
 from src.training import run_training
+
+# Global flag for graceful shutdown
+stop_requested = False
+
+def check_for_quit():
+    """Check for 'q' input in a separate thread."""
+    global stop_requested
+    while not stop_requested:
+        try:
+            user_input = input()
+            if user_input.lower() == 'q':
+                print("\nStop requested! Finishing current run and saving results...")
+                stop_requested = True
+                break
+        except:
+            pass
 
 
 def parse_config(config_path):
@@ -140,6 +158,9 @@ def main():
     
     args = parser.parse_args()
     
+    global stop_requested
+    stop_requested = False
+    
     # Determine config path
     if args.exp:
         config_path = Path(f'configs/experiments/{args.exp}.yaml')
@@ -185,15 +206,28 @@ def main():
         seeds = training_config.get('seeds', [42, 123, 456, 789, 1011])
         print(f"\nEVALUATION MODE: Running with {len(seeds)} seeds")
     
+    # Start input monitoring thread
+    if not args.dry_run:
+        print("\nPress 'q' + Enter at any time to stop after current run completes.")
+        input_thread = threading.Thread(target=check_for_quit, daemon=True)
+        input_thread.start()
+    
     # Run experiments
     all_results = []
     
     for i, run_config in enumerate(runs):
+        if stop_requested:
+            print("\nStopping experiments as requested...")
+            break
         print(f"\n[{i+1}/{len(runs)}] Running: {run_config['name']}")
         
         run_results_by_seed = []
         
         for seed_idx, seed in enumerate(seeds):
+            if stop_requested:
+                print("\nStopping seed iterations as requested...")
+                break
+                
             if not debug_mode:
                 print(f"  Seed {seed_idx+1}/{len(seeds)}: {seed}")
             
@@ -319,6 +353,11 @@ def main():
                       f"{row['accuracy_mean']:.3f} ± {row['accuracy_std']:.3f}")
         
         print(f"\nResults saved to: {output_dir}")
+        
+        if stop_requested:
+            print("\nExperiment stopped by user request.")
+    else:
+        print("\nNo results to save.")
 
 
 if __name__ == '__main__':

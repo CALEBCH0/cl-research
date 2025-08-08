@@ -43,6 +43,8 @@ python runner.py --exp large_scale_faces
 python runner.py --exp NCM_SLDA_iCaRL
 ```
 
+**To stop experiments gracefully**: Type 'q' then press Enter. The current run will complete and results will be saved.
+
 ## Available Datasets
 
 | Dataset | Identities | Images | Use Case |
