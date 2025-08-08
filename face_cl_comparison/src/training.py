@@ -6,6 +6,7 @@ warnings.filterwarnings('ignore', message='.*OpenSSL.*')
 warnings.filterwarnings('ignore', message='No loggers specified.*')
 
 from collections import namedtuple
+import copy
 import random
 import numpy as np
 import torch
@@ -274,56 +275,118 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         return JointTraining(**base_kwargs)
     elif strategy_name == 'icarl':
         # ICaRL requires separate feature_extractor and classifier
-        if model_type.startswith('efficientnet'):
-            # Split EfficientNet into feature extractor and classifier
+        if model_type and model_type.startswith('efficientnet'):
+            # For timm EfficientNet models, we need to properly split them
+            import copy
+            
+            # Get the base EfficientNet model
             if hasattr(model, 'model'):  # GrayToRGBWrapper
-                efficientnet = model.model
-                
-                # Create feature extractor
-                class EfficientNetFeatures(nn.Module):
-                    def __init__(self, base_model):
-                        super().__init__()
-                        self.model = base_model
-                        self.wrapper = model  # Keep the wrapper
-                        
-                    def forward(self, x):
-                        # Apply gray to RGB if needed
-                        x = x.repeat(1, 3, 1, 1)
-                        # Get features before classifier
-                        x = self.model.forward_features(x)
-                        x = self.model.global_pool(x)
-                        x = x.flatten(1)
-                        return x
-                
-                feature_extractor = EfficientNetFeatures(efficientnet)
-                classifier = efficientnet.classifier
+                base_model = model.model
+                needs_rgb_conversion = True
             else:
-                # Direct EfficientNet model
-                class EfficientNetFeatures(nn.Module):
-                    def __init__(self, base_model):
-                        super().__init__()
-                        self.model = base_model
-                        
-                    def forward(self, x):
-                        x = self.model.forward_features(x)
-                        x = self.model.global_pool(x)
-                        x = x.flatten(1)
-                        return x
-                
-                feature_extractor = EfficientNetFeatures(model)
-                classifier = model.classifier
+                base_model = model
+                needs_rgb_conversion = False
+            
+            # Create feature extractor that outputs features before the classifier
+            class EfficientNetFeatureExtractor(nn.Module):
+                def __init__(self, efficientnet_model, convert_rgb=False):
+                    super().__init__()
+                    self.convert_rgb = convert_rgb
+                    
+                    # Copy all layers except the classifier
+                    # Handle different EfficientNet versions that might have different attribute names
+                    if hasattr(efficientnet_model, 'conv_stem'):
+                        self.conv_stem = efficientnet_model.conv_stem
+                        self.bn1 = efficientnet_model.bn1
+                        self.act1 = efficientnet_model.act1 if hasattr(efficientnet_model, 'act1') else nn.SiLU(inplace=True)
+                        self.blocks = efficientnet_model.blocks
+                        self.conv_head = efficientnet_model.conv_head
+                        self.bn2 = efficientnet_model.bn2
+                        self.act2 = efficientnet_model.act2 if hasattr(efficientnet_model, 'act2') else nn.SiLU(inplace=True)
+                        self.global_pool = efficientnet_model.global_pool
+                    else:
+                        # Fallback for different model structures
+                        raise ValueError(f"EfficientNet model structure not recognized")
+                    
+                    # Store feature dimension
+                    self.num_features = efficientnet_model.num_features
+                    
+                def forward(self, x):
+                    if self.convert_rgb:
+                        x = x.repeat(1, 3, 1, 1)  # Convert grayscale to RGB
+                    
+                    # Standard EfficientNet forward (without classifier)
+                    x = self.conv_stem(x)
+                    x = self.bn1(x)
+                    if hasattr(self, 'act1'):
+                        x = self.act1(x)
+                    x = self.blocks(x)
+                    x = self.conv_head(x)
+                    x = self.bn2(x)
+                    if hasattr(self, 'act2'):
+                        x = self.act2(x)
+                    x = self.global_pool(x)
+                    x = x.flatten(1)  # Flatten for classifier
+                    return x
+            
+            # Create the feature extractor
+            feature_extractor = EfficientNetFeatureExtractor(base_model, needs_rgb_conversion)
+            
+            # Get the classifier (just the final linear layer)
+            classifier = copy.deepcopy(base_model.classifier)
+            
+            # Verify dimensions match
+            feature_dim = feature_extractor.num_features
+            classifier_in_features = classifier.in_features if hasattr(classifier, 'in_features') else None
+            
+            if classifier_in_features and feature_dim != classifier_in_features:
+                print(f"Warning: Feature dim {feature_dim} != Classifier input {classifier_in_features}")
+            
+            print(f"ICaRL: Split EfficientNet - Feature dim: {feature_dim}, Num classes: {benchmark_info.num_classes}")
+            
         else:
-            # For other models, use simple split
-            # This is a simplified approach - ideally each model type should be handled
-            print(f"Note: ICaRL with {model_type} may not work optimally. Using simplified split.")
-            feature_extractor = nn.Sequential(*list(model.children())[:-1])
-            classifier = list(model.children())[-1]
+            # For other models (MLP, CNN)
+            print(f"Note: ICaRL with {model_type} using fallback split.")
+            
+            # For SimpleCNN and custom CNN models
+            if hasattr(model, 'features') and hasattr(model, 'classifier'):
+                # Model already has features/classifier split
+                feature_extractor = copy.deepcopy(model.features)
+                classifier = copy.deepcopy(model.classifier)
+            else:
+                # Try to split Sequential models
+                all_children = list(model.children())
+                if len(all_children) > 1:
+                    # Find the last linear layer
+                    classifier_idx = None
+                    for i in reversed(range(len(all_children))):
+                        if isinstance(all_children[i], nn.Linear):
+                            classifier_idx = i
+                            break
+                    
+                    if classifier_idx is not None:
+                        feature_extractor = nn.Sequential(*all_children[:classifier_idx])
+                        classifier = all_children[classifier_idx]
+                    else:
+                        raise ValueError(f"Cannot find classifier layer in {model_type} for ICaRL.")
+                else:
+                    # Model doesn't have clear separation
+                    raise ValueError(f"Cannot split {model_type} for ICaRL. Consider using Replay instead.")
         
-        # ICaRL specific parameters without base_kwargs
+        # Move to device
+        feature_extractor = feature_extractor.to(device)
+        classifier = classifier.to(device)
+        
+        # Create new optimizer for the split model
+        # Note: ICaRL trains both feature extractor and classifier
+        icarl_params = list(feature_extractor.parameters()) + list(classifier.parameters())
+        icarl_optimizer = torch.optim.Adam(icarl_params, lr=kwargs.get('lr', 0.001))
+        
+        # ICaRL specific parameters
         return ICaRL(
             feature_extractor=feature_extractor,
             classifier=classifier,
-            optimizer=optimizer,
+            optimizer=icarl_optimizer,  # Use new optimizer for split model
             memory_size=mem_size,
             buffer_transform=None,
             fixed_memory=True,
