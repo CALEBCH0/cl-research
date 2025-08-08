@@ -138,7 +138,11 @@ def main():
             results.append(result)
             
         except Exception as e:
+            import traceback
             print(f"Error in run {run_config['name']}: {str(e)}")
+            print(f"Error type: {type(e).__name__}")
+            print("Traceback:")
+            traceback.print_exc()
             continue
     
     # Save results
