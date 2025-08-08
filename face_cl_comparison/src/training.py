@@ -27,8 +27,8 @@ from avalanche.training.supervised import (
 from src.strategies.pure_ncm import PureNCM
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger, BaseLogger
-from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
-from avalanche.training.storage_policy import ExperienceBalancedBuffer
+from avalanche.training.plugins import EvaluationPlugin
+from src.plugin_factory import create_plugins
 
 # Optional imports with fallback
 try:
@@ -123,7 +123,7 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
             n_experiences=experiences,
             task_labels=False,
             seed=seed,
-            class_ids_from_zero_in_each_exp=True
+            class_ids_from_zero_in_each_exp=False  # Use global class IDs
         )
         
         input_size = 64 * 64
@@ -219,7 +219,8 @@ def create_model(model_type, benchmark_info):
 
 
 def create_strategy(strategy_name, model, optimizer, criterion, device, 
-                   eval_plugin, mem_size=200, model_type=None, benchmark_info=None, **kwargs):
+                   eval_plugin, mem_size=200, model_type=None, benchmark_info=None, 
+                   plugins_config=None, **kwargs):
     """Create strategy with given parameters."""
     base_kwargs = {
         'model': model,
@@ -232,21 +233,23 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         'evaluator': eval_plugin
     }
     
-    # Check if this is a combination strategy (e.g., "ewc_replay")
+    # Create plugins from configuration
     plugins = []
-    if '_replay' in strategy_name:
-        # Add replay plugin
-        storage_policy = ExperienceBalancedBuffer(
-            max_size=mem_size,
-            adaptive_size=True
+    if plugins_config:
+        # Get feature extractor for plugins that need it
+        feature_extractor = None
+        if hasattr(model, 'features'):
+            feature_extractor = model.features
+        elif hasattr(model, 'feature_extractor'):
+            feature_extractor = model.feature_extractor
+            
+        plugins = create_plugins(
+            plugins_config, 
+            mem_size=mem_size, 
+            device=device,
+            optimizer=optimizer,
+            feature_extractor=feature_extractor
         )
-        replay_plugin = ReplayPlugin(
-            mem_size=mem_size,
-            storage_policy=storage_policy
-        )
-        plugins.append(replay_plugin)
-        # Remove _replay suffix to get base strategy
-        strategy_name = strategy_name.replace('_replay', '')
     
     if plugins:
         base_kwargs['plugins'] = plugins
@@ -298,11 +301,11 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
                     if hasattr(efficientnet_model, 'conv_stem'):
                         self.conv_stem = efficientnet_model.conv_stem
                         self.bn1 = efficientnet_model.bn1
-                        self.act1 = efficientnet_model.act1 if hasattr(efficientnet_model, 'act1') else nn.SiLU(inplace=True)
+                        self.act1 = getattr(efficientnet_model, 'act1', nn.SiLU(inplace=True))
                         self.blocks = efficientnet_model.blocks
                         self.conv_head = efficientnet_model.conv_head
                         self.bn2 = efficientnet_model.bn2
-                        self.act2 = efficientnet_model.act2 if hasattr(efficientnet_model, 'act2') else nn.SiLU(inplace=True)
+                        self.act2 = getattr(efficientnet_model, 'act2', nn.SiLU(inplace=True))
                         self.global_pool = efficientnet_model.global_pool
                     else:
                         # Fallback for different model structures
@@ -318,13 +321,11 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
                     # Standard EfficientNet forward (without classifier)
                     x = self.conv_stem(x)
                     x = self.bn1(x)
-                    if hasattr(self, 'act1'):
-                        x = self.act1(x)
+                    x = self.act1(x)
                     x = self.blocks(x)
                     x = self.conv_head(x)
                     x = self.bn2(x)
-                    if hasattr(self, 'act2'):
-                        x = self.act2(x)
+                    x = self.act2(x)
                     x = self.global_pool(x)
                     x = x.flatten(1)  # Flatten for classifier
                     return x
@@ -531,7 +532,8 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
 
 def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp',
                 device='cuda', experiences=5, epochs=1, batch_size=32, 
-                mem_size=200, lr=0.001, seed=42, verbose=True, **kwargs):
+                mem_size=200, lr=0.001, seed=42, verbose=True, 
+                plugins_config=None, **kwargs):
     """
     Run a complete training experiment and return results.
     
@@ -582,7 +584,8 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     strategy = create_strategy(
         strategy_name, model, optimizer, criterion, device, eval_plugin,
         mem_size=mem_size, model_type=model_type, benchmark_info=benchmark_info,
-        epochs=epochs, batch_size=batch_size, num_classes=benchmark_info.num_classes
+        epochs=epochs, batch_size=batch_size, num_classes=benchmark_info.num_classes,
+        plugins_config=plugins_config
     )
     
     # Training loop

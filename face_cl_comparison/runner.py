@@ -46,6 +46,14 @@ def generate_runs(config):
                     run_config['strategy'] = value
                 elif param_path == 'strategy.params.mem_size':
                     run_config['mem_size'] = value
+                elif param_path == 'strategy.plugins':
+                    run_config['plugins'] = value
+                    # Create a readable name for plugin combinations
+                    if value is None:
+                        plugin_names = "none"
+                    else:
+                        plugin_names = "+".join([p['name'] if isinstance(p, dict) else p for p in value])
+                    run_config['name'] = f"{run_config.get('strategy', 'unknown')}_{plugin_names}"
             
             runs.append(run_config)
     
@@ -142,9 +150,14 @@ def main():
                 if dataset_name == 'splitmnist':
                     dataset_name = 'mnist'
                 
+                # Get strategy name from run_config or fixed config
+                strategy_name = run_config.get('strategy')
+                if not strategy_name and 'strategy' in fixed:
+                    strategy_name = fixed['strategy'].get('name', 'naive')
+                
                 result = run_training(
                     benchmark_name=dataset_name,
-                    strategy_name=strategy_config.get('name', run_config.get('strategy', 'naive')),
+                    strategy_name=strategy_name,
                     model_type=model_name or 'mlp',
                     device=device,
                     experiences=fixed.get('dataset', {}).get('n_experiences', 5),
@@ -153,7 +166,8 @@ def main():
                     mem_size=strategy_config.get('params', {}).get('mem_size', run_config.get('mem_size', 500)),
                     lr=fixed.get('training', {}).get('lr', 0.001),
                     seed=seed,
-                    verbose=debug_mode  # Only verbose in debug mode
+                    verbose=debug_mode,  # Only verbose in debug mode
+                    plugins_config=run_config.get('plugins', None)
                 )
                 
                 # Add run info to result
