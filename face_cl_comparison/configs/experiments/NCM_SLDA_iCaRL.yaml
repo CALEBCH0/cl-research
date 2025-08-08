@@ -50,7 +50,7 @@ fixed:
     batch_size: 16  # Smaller batch for NCM methods
     
     # Debug mode: true = single seed (fast), false = multi-seed (robust)
-    debug: true
+    debug: false
     seed: 42  # Used when debug=true
     seeds: [42, 123, 456, 789, 1011]  # Used when debug=false
     

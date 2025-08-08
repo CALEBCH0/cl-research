@@ -23,6 +23,9 @@ from avalanche.training.supervised import (
     SynapticIntelligence as SI, MAS, GDumb,
     Cumulative, JointTraining, ICaRL, StreamingLDA
 )
+from avalanche.training.plugins import (
+    ReplayPlugin
+)
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger, BaseLogger
 from avalanche.training.plugins import EvaluationPlugin

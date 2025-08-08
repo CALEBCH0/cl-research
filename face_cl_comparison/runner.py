@@ -79,6 +79,7 @@ def main():
     runs = generate_runs(config)
     
     print(f"\nExperiment: {config.get('name', 'unnamed')}")
+    print(f"Descrption: {config.get('description', 'No description')}")
     print(f"Number of runs: {len(runs)}")
     
     if args.dry_run:
@@ -99,11 +100,11 @@ def main():
     if debug_mode:
         # Single seed for debugging
         seeds = [training_config.get('seed', 42)]
-        print("\n🐛 DEBUG MODE: Running with single seed")
+        print("\nDEBUG MODE: Running with single seed")
     else:
         # Multiple seeds for evaluation
         seeds = training_config.get('seeds', [42, 123, 456, 789, 1011])
-        print(f"\n📊 EVALUATION MODE: Running with {len(seeds)} seeds")
+        print(f"\nEVALUATION MODE: Running with {len(seeds)} seeds")
     
     # Run experiments
     all_results = []
@@ -158,6 +159,7 @@ def main():
                 # Add run info to result
                 result['run_name'] = run_config['name']
                 result['model_name'] = run_config.get('model', 'mlp')
+                result['dataset_name'] = dataset_name
                 result['seed'] = seed
                 run_results_by_seed.append(result)
                 
@@ -185,6 +187,7 @@ def main():
                     'run_name': run_config['name'],
                     'strategy': run_results_by_seed[0]['strategy'],
                     'model': run_results_by_seed[0]['model'],
+                    'dataset_name': run_results_by_seed[0]['dataset_name'],
                     'average_accuracy': mean_acc,
                     'accuracy_std': std_acc,
                     'accuracy_mean': mean_acc,
@@ -200,17 +203,19 @@ def main():
         df = pd.DataFrame(all_results)
         df.to_csv(output_dir / 'results.csv', index=False)
         
-        print(f"\n{'='*60}")
-        print("RESULTS SUMMARY")
-        print('='*60)
+        tab_size = 17
+        print(f"\n{'='*90}")
+        print("RESULTS SUMMARY\n")
+        print(f"{'run_name':<{tab_size}} {'strategy':<{tab_size}} {'model':<{tab_size}} {'dataset_name':<{tab_size}} {'average_accuracy':<{tab_size}}")
+        print('='*90)
         
         if debug_mode:
             # Single seed - show simple table
-            print(df[['run_name', 'strategy', 'model', 'average_accuracy']].to_string(index=False))
+            print(df[['run_name', 'strategy', 'model', 'dataset_name', 'average_accuracy']].to_string(index=False))
         else:
             # Multiple seeds - show mean ± std
             for _, row in df.iterrows():
-                print(f"{row['run_name']:<15} {row['strategy']:<10} {row['model']:<15} "
+                print(f"{row['run_name']:<{tab_size}} {row['strategy']:<{tab_size}} {row['model']:<{tab_size}} {row['dataset_name']:<{tab_size}} "
                       f"{row['accuracy_mean']:.3f} ± {row['accuracy_std']:.3f}")
         
         print(f"\nResults saved to: {output_dir}")

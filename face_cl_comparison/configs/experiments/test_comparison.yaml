@@ -5,14 +5,17 @@ description: Test backbone and strategy comparison
 # What to compare
 comparison:
   vary:
-    model.backbone.name:
-      - mlp
-      - cnn
+    strategy.name:
+      - naive
+      - replay
 
 # Fixed settings
 fixed:
+  model:
+    backbone:
+      name: mlp  # Default for testing
+
   strategy:
-    name: replay
     params:
       mem_size: 500
       
@@ -21,4 +24,8 @@ fixed:
     n_experiences: 5
     
   training:
-    epochs_per_experience: 2  # Quick test
+    epochs_per_experience: 1  # Quick test
+    debug: false
+    seed: 42
+    # seeds: [42, 123, 456, 789, 1011]  # Multiple seeds for robustness
+    seeds: [42, 123]  # Single seed for quick test
