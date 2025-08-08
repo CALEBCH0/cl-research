@@ -5,6 +5,7 @@ from torch.utils.data import TensorDataset
 from sklearn.datasets import fetch_lfw_people
 from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
+from pathlib import Path
 
 
 def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20, 
@@ -24,11 +25,24 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     """
     print(f"Loading LFW dataset (min {min_faces_per_person} faces per person)...")
     
+    # Get sklearn data home directory
+    from sklearn.datasets import get_data_home
+    data_home = get_data_home()
+    lfw_home = Path(data_home) / 'lfw_home'
+    
+    if not lfw_home.exists():
+        print(f"First time loading LFW - downloading dataset (~200MB)...")
+        print(f"Dataset will be cached in: {lfw_home}")
+        print("This is a one-time download. Future runs will use the cached version.")
+    else:
+        print(f"Using cached LFW dataset from: {lfw_home}")
+    
     # Fetch LFW data
     # Note: sklearn's fetch_lfw_people expects resize as a float ratio, not tuple
     # Default LFW images are 250x250, so we calculate the ratio
     resize_ratio = image_size[0] / 250.0  # Assuming square images
     
+    print("Fetching LFW data...")
     lfw_people = fetch_lfw_people(
         min_faces_per_person=min_faces_per_person,
         resize=resize_ratio,

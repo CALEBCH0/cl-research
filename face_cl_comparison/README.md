@@ -55,7 +55,12 @@ python runner.py --exp NCM_SLDA_iCaRL
 | `lfw_200` | 200 | ~3,000+ | Large-scale experiments |
 | `lfw` | 158+ | ~13,000 | Full LFW (min 20 imgs/person) |
 
-**Note**: LFW dataset will be automatically downloaded on first use. The resize issue with sklearn's `fetch_lfw_people` has been fixed - it now properly accepts resize as a float ratio.
+**Note**: LFW dataset will be automatically downloaded on first use (~200MB). It's cached locally after the first download, so subsequent runs will be much faster. The cache location is typically:
+- macOS: `~/scikit_learn_data/lfw_home/`
+- Linux: `~/.cache/scikit_learn_data/lfw_home/`
+- Windows: `C:\Users\{username}\scikit_learn_data\lfw_home\`
+
+The resize issue with sklearn's `fetch_lfw_people` has been fixed - it now properly accepts resize as a float ratio.
 
 ## Flexible Plugin System
 
