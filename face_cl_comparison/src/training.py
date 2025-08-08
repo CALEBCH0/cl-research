@@ -6,13 +6,17 @@ warnings.filterwarnings('ignore', message='.*OpenSSL.*')
 warnings.filterwarnings('ignore', message='No loggers specified.*')
 
 from collections import namedtuple
+import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data import TensorDataset
+from sklearn.datasets import fetch_olivetti_faces
 from avalanche.benchmarks.classic import SplitMNIST, SplitCIFAR10, SplitFMNIST
 from avalanche.benchmarks import nc_benchmark
-from avalanche.benchmarks.utils import AvalancheDataset
+from avalanche.benchmarks.utils import AvalancheDataset, as_classification_dataset
+from avalanche.benchmarks.scenarios.dataset_scenario import benchmark_from_datasets
 from torchvision import datasets, transforms
-from avalanche.models import SimpleMLP, SimpleCNN
+from avalanche.models import SimpleMLP, SimpleCNN, FeatureExtractorBackbone
 from avalanche.training.supervised import (
     Naive, EWC, Replay, GEM, AGEM, LwF, 
     SynapticIntelligence as SI, MAS, GDumb,
@@ -21,6 +25,13 @@ from avalanche.training.supervised import (
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger, BaseLogger
 from avalanche.training.plugins import EvaluationPlugin
+
+# Optional imports with fallback
+try:
+    import timm
+    TIMM_AVAILABLE = True
+except ImportError:
+    TIMM_AVAILABLE = False
 
 BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
 
@@ -57,9 +68,6 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         channels = 3
     elif benchmark_name == 'olivetti':
         # Olivetti Faces dataset
-        from sklearn.datasets import fetch_olivetti_faces
-        import numpy as np
-        from torch.utils.data import TensorDataset
         
         # Load Olivetti faces
         olivetti = fetch_olivetti_faces(shuffle=False)  # Don't shuffle, we'll do it manually
@@ -99,8 +107,6 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         train_tensor_dataset.targets = y[train_indices].tolist()
         test_tensor_dataset.targets = y[test_indices].tolist()
         
-        # Import as_classification_dataset
-        from avalanche.benchmarks.utils import as_classification_dataset
         
         # Convert to classification datasets
         train_dataset = as_classification_dataset(train_tensor_dataset)
@@ -139,7 +145,6 @@ def create_model(model_type, benchmark_info):
         # For MNIST/Fashion-MNIST, we need a different approach
         if benchmark_info.channels == 1:
             # Use a simple CNN that works with grayscale
-            import torch.nn as nn
             class SimpleGrayCNN(nn.Module):
                 def __init__(self, num_classes):
                     super().__init__()
@@ -171,11 +176,12 @@ def create_model(model_type, benchmark_info):
             )
     elif model_type.startswith('efficientnet'):
         # EfficientNet support
-        try:
-            import timm
-            
-            # For SLDA, we need a feature extractor
-            if benchmark_info.channels == 1:
+        if not TIMM_AVAILABLE:
+            print("timm not installed. Using CNN instead.")
+            return create_model('cnn', benchmark_info)
+        
+        # For SLDA, we need a feature extractor
+        if benchmark_info.channels == 1:
                 # Convert grayscale to RGB by repeating channels
                 class GrayToRGBWrapper(nn.Module):
                     def __init__(self, model):
@@ -192,15 +198,12 @@ def create_model(model_type, benchmark_info):
                     num_classes=benchmark_info.num_classes
                 )
                 model = GrayToRGBWrapper(base_model)
-            else:
-                model = timm.create_model(
-                    model_type.replace('_', '-'),
-                    pretrained=True,
-                    num_classes=benchmark_info.num_classes
-                )
-        except ImportError:
-            print("timm not installed. Using CNN instead.")
-            return create_model('cnn', benchmark_info)
+        else:
+            model = timm.create_model(
+                model_type.replace('_', '-'),
+                pretrained=True,
+                num_classes=benchmark_info.num_classes
+            )
     else:
         raise ValueError(f"Unknown model type: {model_type}")
     
@@ -247,7 +250,6 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         return ICaRL(**base_kwargs, mem_size_per_class=20, buffer_transform=None, fixed_memory=True)
     elif strategy_name == 'slda':
         # SLDA requires special setup
-        from avalanche.models import FeatureExtractorBackbone
         
         # Extract feature size based on model
         if hasattr(model, 'fc'):

@@ -3,10 +3,13 @@
 Simplified runner that works with existing code.
 """
 import argparse
+import itertools
+import traceback
 import yaml
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
+import torch
 from src.training import run_training
 
 
@@ -23,7 +26,6 @@ def generate_runs(config):
     
     if 'comparison' in config and 'vary' in config['comparison']:
         # Grid search over parameters
-        import itertools
         
         vary_params = config['comparison']['vary']
         param_names = list(vary_params.keys())
@@ -97,7 +99,6 @@ def main():
         try:
             # Map to run_training parameters
             # Check CUDA availability
-            import torch
             if args.gpu >= 0 and torch.cuda.is_available():
                 device = f'cuda:{args.gpu}'
             else:
@@ -138,7 +139,6 @@ def main():
             results.append(result)
             
         except Exception as e:
-            import traceback
             print(f"Error in run {run_config['name']}: {str(e)}")
             print(f"Error type: {type(e).__name__}")
             print("Traceback:")
