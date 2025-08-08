@@ -251,53 +251,57 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
     elif strategy_name == 'joint':
         return JointTraining(**base_kwargs)
     elif strategy_name == 'icarl':
-        return ICaRL(**base_kwargs, mem_size_per_class=20, buffer_transform=None, fixed_memory=True)
+        return ICaRL(**base_kwargs, memory_size=mem_size, buffer_transform=None, fixed_memory=True)
     elif strategy_name == 'slda':
-        # SLDA requires special setup
+        # SLDA requires a feature extractor model, not a classifier
+        # For EfficientNet, we need to get the feature extractor part
         
-        # Extract feature size based on model
-        if hasattr(model, 'fc'):
-            feature_size = model.fc.in_features
-        elif hasattr(model, 'classifier'):
-            if isinstance(model.classifier, nn.Linear):
-                feature_size = model.classifier.in_features
-            else:
-                # Find last linear layer
-                for module in reversed(list(model.classifier.modules())):
-                    if isinstance(module, nn.Linear):
-                        feature_size = module.in_features
-                        break
-        else:
-            feature_size = 512  # default
-        
-        # Wrap model as feature extractor
-        if not isinstance(model, FeatureExtractorBackbone):
-            # Create a feature extractor from the model
-            class FeatureExtractor(nn.Module):
-                def __init__(self, base_model):
-                    super().__init__()
-                    self.base_model = base_model
-                    # Remove the last layer
-                    if hasattr(base_model, 'fc'):
-                        self.base_model.fc = nn.Identity()
-                    elif hasattr(base_model, 'classifier'):
-                        if isinstance(base_model.classifier, nn.Sequential):
-                            self.base_model.classifier[-1] = nn.Identity()
-                        else:
-                            self.base_model.classifier = nn.Identity()
+        class EfficientNetFeatureExtractor(nn.Module):
+            def __init__(self, base_model):
+                super().__init__()
+                if hasattr(base_model, 'model'):  # GrayToRGBWrapper
+                    self.wrapper = base_model
+                    efficientnet = base_model.model
+                else:
+                    self.wrapper = None
+                    efficientnet = base_model
                 
-                def forward(self, x):
-                    return self.base_model(x)
+                # For timm EfficientNet models
+                self.features = efficientnet.conv_stem
+                self.bn1 = efficientnet.bn1
+                self.blocks = efficientnet.blocks
+                self.conv_head = efficientnet.conv_head
+                self.bn2 = efficientnet.bn2
+                self.global_pool = efficientnet.global_pool
+                
+                # Get the feature dimension
+                self.num_features = efficientnet.num_features
             
-            feature_extractor = FeatureExtractor(model)
-            feature_extractor = feature_extractor.to(device)
+            def forward(self, x):
+                if self.wrapper is not None:
+                    x = x.repeat(1, 3, 1, 1)  # Convert grayscale to RGB
+                
+                # EfficientNet forward without the classifier
+                x = self.features(x)
+                x = self.bn1(x)
+                x = self.blocks(x)
+                x = self.conv_head(x)
+                x = self.bn2(x)
+                x = self.global_pool(x)
+                x = x.flatten(1)
+                return x
         
-        # SLDA doesn't use optimizer/criterion in the same way
+        # Create feature extractor
+        feature_extractor = EfficientNetFeatureExtractor(model)
+        feature_extractor = feature_extractor.to(device)
+        feature_size = feature_extractor.num_features
+        
+        # SLDA kwargs
         slda_kwargs = {
             'slda_model': feature_extractor,
             'criterion': criterion,
             'input_size': feature_size,
-            'num_classes': kwargs.get('num_classes', 10),
+            'num_classes': benchmark_info.num_classes,
             'shrinkage_param': 1e-4,
             'streaming_update_sigma': True,
             'train_mb_size': kwargs.get('batch_size', 32),
