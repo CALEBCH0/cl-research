@@ -30,7 +30,7 @@ fixed:
       streaming_update_sigma: true
       
       # For replay
-      mem_size: 1000  # 50 samples per class for 20 classes
+      mem_size: 200  # More realistic: ~5 samples per class
       
   dataset:
     # Using Olivetti Faces - good for testing NCM methods

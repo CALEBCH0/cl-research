@@ -6,6 +6,7 @@ warnings.filterwarnings('ignore', message='.*OpenSSL.*')
 warnings.filterwarnings('ignore', message='No loggers specified.*')
 
 from collections import namedtuple
+import random
 import numpy as np
 import torch
 import torch.nn as nn
@@ -383,8 +384,14 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     Returns:
         dict: Results containing final accuracies and average accuracy
     """
-    # Set seed
+    # Set seed for all random number generators
+    random.seed(seed)
+    np.random.seed(seed)
     torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # For deterministic behavior (reduces performance)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     
     # Create benchmark
     benchmark, benchmark_info = set_benchmark(benchmark_name, experiences, seed)
