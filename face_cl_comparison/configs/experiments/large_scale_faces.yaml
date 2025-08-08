@@ -1,0 +1,51 @@
+# Large-scale face recognition CL experiment
+name: large_scale_faces
+description: Test CL strategies on progressively larger face datasets
+
+comparison:
+  # Test on different dataset scales
+  vary:
+    dataset.name:
+      - olivetti      # 40 classes (baseline)
+      - lfw_50        # 50 classes
+      - lfw_100       # 100 classes  
+      - lfw_200       # 200 classes
+      # - lfw          # All classes with 20+ images (~158 classes)
+
+fixed:
+  # Use SLDA for efficiency across all scales
+  strategy:
+    name: slda
+    params:
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+  
+  model:
+    backbone:
+      name: efficientnet_b2  # Larger model for more classes
+      pretrained: true
+    
+  dataset:
+    n_experiences: 10  # Always split into 10 experiences
+    
+  training:
+    epochs_per_experience: 1  # SLDA typically uses 1 epoch
+    batch_size: 32
+    lr: 0.001
+    
+    # Single seed for quick comparison
+    debug: true
+    seed: 42
+    
+  evaluation:
+    primary_metric: average_accuracy
+    track_metrics:
+      - training_time
+      - memory_usage
+      - accuracy_per_experience
+
+# Analysis focus:
+# - How does performance scale with number of classes?
+# - Is there a sweet spot for number of experiences?
+# - Memory requirements for different scales
+# - When do we need larger models?

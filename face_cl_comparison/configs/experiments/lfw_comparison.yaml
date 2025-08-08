@@ -1,0 +1,69 @@
+# LFW dataset comparison - larger scale face recognition CL
+name: lfw_comparison
+description: Compare CL strategies on LFW dataset with 100 identities
+
+comparison:
+  strategies:
+    # Baseline
+    - naive
+    
+    # Standard CL methods
+    - replay
+    - ewc
+    - name: ewc_replay
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 1000
+    
+    # NCM-based methods (more efficient for many classes)
+    - slda
+    - icarl
+    - pure_ncm
+    
+    # SLDA with replay
+    - name: slda_replay  
+      base: slda
+      plugins:
+        - name: replay
+          params:
+            mem_size: 1000
+            storage_policy: class_balanced
+
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1  # Good balance of performance/efficiency
+      pretrained: true
+    
+  dataset:
+    name: lfw_100  # LFW subset with 100 identities
+    n_experiences: 10  # 10 identities per experience
+    
+  training:
+    epochs_per_experience: 10
+    batch_size: 32
+    lr: 0.001
+    
+    # Multi-seed evaluation
+    debug: false
+    seeds: [42, 123, 456]  # 3 seeds for reasonable runtime
+    
+  strategy:
+    params:
+      # For replay/icarl
+      mem_size: 1000  # 10 samples per class on average
+      
+      # For SLDA
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+  evaluation:
+    primary_metric: average_accuracy
+
+# Expected insights:
+# - More challenging than Olivetti (more classes, real-world variations)
+# - NCM methods should scale better with 100 classes
+# - Replay becomes more important with more classes
+# - SLDA should be fast and accurate

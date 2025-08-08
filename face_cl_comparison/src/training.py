@@ -129,6 +129,50 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         input_size = 64 * 64
         num_classes = 40  # 40 people in Olivetti
         channels = 1
+    elif benchmark_name.startswith('lfw'):
+        # LFW (Labeled Faces in the Wild) dataset
+        from src.datasets.lfw import create_lfw_benchmark, create_lfw_subset_benchmark
+        
+        if benchmark_name == 'lfw':
+            # Full LFW with people having 20+ images
+            benchmark, dataset_info = create_lfw_benchmark(
+                n_experiences=experiences,
+                min_faces_per_person=20,
+                image_size=(64, 64),
+                seed=seed
+            )
+        elif benchmark_name == 'lfw_subset':
+            # Subset with specific number of identities
+            benchmark, dataset_info = create_lfw_subset_benchmark(
+                n_identities=100,  # 100 people
+                n_experiences=experiences,
+                min_faces_per_person=20,
+                image_size=(64, 64),
+                seed=seed
+            )
+        else:
+            # Custom subset size, e.g., lfw_200 for 200 identities
+            try:
+                n_identities = int(benchmark_name.split('_')[1])
+            except:
+                n_identities = 100  # Default
+            
+            benchmark, dataset_info = create_lfw_subset_benchmark(
+                n_identities=n_identities,
+                n_experiences=experiences,
+                min_faces_per_person=15,  # Lower threshold for more identities
+                image_size=(64, 64),
+                seed=seed
+            )
+        
+        input_size = 64 * 64
+        num_classes = dataset_info['num_classes']
+        channels = 1
+        
+        print(f"\nLFW Dataset loaded:")
+        print(f"  Classes: {num_classes}")
+        print(f"  Train samples: {dataset_info['num_train_samples']}")
+        print(f"  Test samples: {dataset_info['num_test_samples']}")
     else:
         raise ValueError(f"Unknown benchmark: {benchmark_name}")
     

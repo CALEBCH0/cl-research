@@ -6,7 +6,10 @@ A flexible framework for comparing continual learning strategies on face recogni
 
 - **Multiple CL Strategies**: Naive, EWC, Replay, GEM, AGEM, LwF, SI, MAS, GDumb, iCaRL, SLDA, Pure NCM
 - **Flexible Plugin System**: Combine any strategy with multiple plugins
-- **Face Recognition Focus**: Optimized for face datasets (Olivetti, LFW, VGGFace2)
+- **Face Recognition Datasets**: 
+  - Olivetti Faces (40 identities) - Quick testing
+  - LFW - Labeled Faces in the Wild (158+ identities) - Real-world conditions
+  - Custom LFW subsets (e.g., lfw_100 for 100 identities)
 - **Efficient Experimentation**: YAML-based configuration, multi-seed evaluation, automatic result aggregation
 
 ## Installation
@@ -27,12 +30,25 @@ pip install -r requirements.txt
 ## Quick Start
 
 ```bash
-# Run a simple experiment
+# Run a simple experiment with Olivetti (quick)
 ./run_exp.sh NCM_SLDA_iCaRL
+
+# Run with larger LFW dataset
+python runner.py --exp lfw_comparison
 
 # Or directly with Python
 python runner.py --exp NCM_SLDA_iCaRL
 ```
+
+## Available Datasets
+
+| Dataset | Identities | Images | Use Case |
+|---------|------------|---------|----------|
+| `olivetti` | 40 | 400 | Quick tests, prototyping |
+| `lfw_50` | 50 | ~1,000 | Small-scale experiments |
+| `lfw_100` | 100 | ~2,000 | Medium-scale experiments |
+| `lfw_200` | 200 | ~4,000 | Large-scale experiments |
+| `lfw` | 158+ | ~13,000 | Full LFW (20+ imgs/person) |
 
 ## Flexible Plugin System
 
