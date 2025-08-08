@@ -192,15 +192,19 @@ def create_model(model_type, benchmark_info):
                         x = x.repeat(1, 3, 1, 1)  # Convert 1 channel to 3
                         return self.model(x)
                 
+                # Fix model name for timm - convert efficientnet-b1 to efficientnet_b1
+                timm_model_name = model_type.replace('-', '_')
                 base_model = timm.create_model(
-                    model_type.replace('_', '-'),  # efficientnet_b1 -> efficientnet-b1
+                    timm_model_name,
                     pretrained=True,
                     num_classes=benchmark_info.num_classes
                 )
                 model = GrayToRGBWrapper(base_model)
         else:
+            # Fix model name for timm - convert efficientnet-b1 to efficientnet_b1
+            timm_model_name = model_type.replace('-', '_')
             model = timm.create_model(
-                model_type.replace('_', '-'),
+                timm_model_name,
                 pretrained=True,
                 num_classes=benchmark_info.num_classes
             )
