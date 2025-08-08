@@ -178,40 +178,51 @@ def create_model(model_type, benchmark_info):
             model = SimpleCNN(
                 num_classes=benchmark_info.num_classes
             )
-    elif model_type.startswith('efficientnet'):
-        # EfficientNet support
+    elif model_type.startswith('efficientnet') or model_type.startswith('resnet') or \
+         model_type.startswith('mobilenet') or model_type in ['resnet18', 'resnet50', 
+         'mobilenetv3_small', 'mobilenetv3_large']:
+        # timm model support (EfficientNet, ResNet, MobileNet, etc.)
         if not TIMM_AVAILABLE:
-            print("timm not installed. Using CNN instead.")
+            print(f"timm not installed. Cannot create {model_type}.")
             return create_model('cnn', benchmark_info)
         
-        # For SLDA, we need a feature extractor
+        # Convert underscores to hyphens for some model names if needed
+        # timm uses different naming conventions
+        timm_model_name = model_type
+        
+        # Handle grayscale images (MNIST, Fashion-MNIST, Olivetti)
         if benchmark_info.channels == 1:
-                # Convert grayscale to RGB by repeating channels
-                class GrayToRGBWrapper(nn.Module):
-                    def __init__(self, model):
-                        super().__init__()
-                        self.model = model
-                    
-                    def forward(self, x):
-                        x = x.repeat(1, 3, 1, 1)  # Convert 1 channel to 3
-                        return self.model(x)
+            # Convert grayscale to RGB by repeating channels
+            class GrayToRGBWrapper(nn.Module):
+                def __init__(self, model):
+                    super().__init__()
+                    self.model = model
                 
-                # Fix model name for timm - convert efficientnet-b1 to efficientnet_b1
-                timm_model_name = model_type.replace('-', '_')
+                def forward(self, x):
+                    x = x.repeat(1, 3, 1, 1)  # Convert 1 channel to 3
+                    return self.model(x)
+            
+            try:
                 base_model = timm.create_model(
                     timm_model_name,
                     pretrained=True,
                     num_classes=benchmark_info.num_classes
                 )
                 model = GrayToRGBWrapper(base_model)
+            except Exception as e:
+                print(f"Error creating {model_type}: {e}")
+                raise ValueError(f"Failed to create model {model_type}")
         else:
-            # Fix model name for timm - convert efficientnet-b1 to efficientnet_b1
-            timm_model_name = model_type.replace('-', '_')
-            model = timm.create_model(
-                timm_model_name,
-                pretrained=True,
-                num_classes=benchmark_info.num_classes
-            )
+            # RGB images
+            try:
+                model = timm.create_model(
+                    timm_model_name,
+                    pretrained=True,
+                    num_classes=benchmark_info.num_classes
+                )
+            except Exception as e:
+                print(f"Error creating {model_type}: {e}")
+                raise ValueError(f"Failed to create model {model_type}")
     else:
         raise ValueError(f"Unknown model type: {model_type}")
     
@@ -222,6 +233,77 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
                    eval_plugin, mem_size=200, model_type=None, benchmark_info=None, 
                    plugins_config=None, **kwargs):
     """Create strategy with given parameters."""
+    
+    # Generic feature extractor that works with different architectures
+    class GenericFeatureExtractor(nn.Module):
+        def __init__(self, base_model, model_type):
+            super().__init__()
+            self.model_type = model_type
+            
+            # Handle GrayToRGBWrapper
+            if hasattr(base_model, 'model'):  # GrayToRGBWrapper
+                self.wrapper = True
+                actual_model = base_model.model
+            else:
+                self.wrapper = False
+                actual_model = base_model
+            
+            # Extract features based on model type
+            if 'efficientnet' in model_type:
+                # For EfficientNet models
+                self.features = nn.Sequential(
+                    actual_model.conv_stem,
+                    actual_model.bn1,
+                    actual_model.blocks,
+                    actual_model.conv_head,
+                    actual_model.bn2,
+                    actual_model.global_pool,
+                    nn.Flatten()
+                )
+                self.num_features = actual_model.num_features
+                
+            elif 'resnet' in model_type:
+                # For ResNet models
+                # Remove the final fc layer
+                modules = list(actual_model.children())[:-1]
+                self.features = nn.Sequential(*modules, nn.Flatten())
+                # Get feature dimension
+                self.num_features = actual_model.fc.in_features
+                
+            elif 'mobilenet' in model_type:
+                # For MobileNet models
+                # Remove classifier and add pooling if needed
+                if hasattr(actual_model, 'features'):
+                    self.features = nn.Sequential(
+                        actual_model.features,
+                        actual_model.avgpool if hasattr(actual_model, 'avgpool') else nn.AdaptiveAvgPool2d(1),
+                        nn.Flatten()
+                    )
+                else:
+                    # MobileNetV3 structure
+                    modules = list(actual_model.children())[:-1]
+                    self.features = nn.Sequential(*modules, nn.Flatten())
+                
+                # Get feature dimension
+                if hasattr(actual_model, 'classifier'):
+                    if isinstance(actual_model.classifier, nn.Sequential):
+                        # Find the first Linear layer in classifier
+                        for module in actual_model.classifier:
+                            if isinstance(module, nn.Linear):
+                                self.num_features = module.in_features
+                                break
+                    else:
+                        self.num_features = actual_model.classifier.in_features
+                else:
+                    self.num_features = 1280  # Default for MobileNetV3
+            else:
+                raise ValueError(f"Unsupported model type for feature extraction: {model_type}")
+        
+        def forward(self, x):
+            if self.wrapper:
+                x = x.repeat(1, 3, 1, 1)  # Convert grayscale to RGB
+            return self.features(x)
+    
     base_kwargs = {
         'model': model,
         'optimizer': optimizer,
@@ -410,47 +492,13 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         )
     elif strategy_name == 'slda':
         # SLDA requires a feature extractor model, not a classifier
-        # For EfficientNet, we need to get the feature extractor part
-        
-        class EfficientNetFeatureExtractor(nn.Module):
-            def __init__(self, base_model):
-                super().__init__()
-                if hasattr(base_model, 'model'):  # GrayToRGBWrapper
-                    self.wrapper = base_model
-                    efficientnet = base_model.model
-                else:
-                    self.wrapper = None
-                    efficientnet = base_model
-                
-                # For timm EfficientNet models
-                self.features = efficientnet.conv_stem
-                self.bn1 = efficientnet.bn1
-                self.blocks = efficientnet.blocks
-                self.conv_head = efficientnet.conv_head
-                self.bn2 = efficientnet.bn2
-                self.global_pool = efficientnet.global_pool
-                
-                # Get the feature dimension
-                self.num_features = efficientnet.num_features
-            
-            def forward(self, x):
-                if self.wrapper is not None:
-                    x = x.repeat(1, 3, 1, 1)  # Convert grayscale to RGB
-                
-                # EfficientNet forward without the classifier
-                x = self.features(x)
-                x = self.bn1(x)
-                x = self.blocks(x)
-                x = self.conv_head(x)
-                x = self.bn2(x)
-                x = self.global_pool(x)
-                x = x.flatten(1)
-                return x
         
         # Create feature extractor
-        feature_extractor = EfficientNetFeatureExtractor(model)
+        feature_extractor = GenericFeatureExtractor(model, model_type)
         feature_extractor = feature_extractor.to(device)
         feature_size = feature_extractor.num_features
+        
+        print(f"SLDA: Created feature extractor for {model_type} with feature size {feature_size}")
         
         # SLDA kwargs
         slda_kwargs = {
@@ -470,59 +518,13 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         return StreamingLDA(**slda_kwargs)
     elif strategy_name == 'pure_ncm':
         # Pure NCM requires a feature extractor
-        if model_type.startswith('efficientnet'):
-            # Create feature extractor for EfficientNet
-            class EfficientNetFeatureExtractor(nn.Module):
-                def __init__(self, base_model):
-                    super().__init__()
-                    if hasattr(base_model, 'model'):  # GrayToRGBWrapper
-                        self.wrapper = base_model
-                        efficientnet = base_model.model
-                    else:
-                        self.wrapper = None
-                        efficientnet = base_model
-                    
-                    # For timm EfficientNet models
-                    self.features = efficientnet.conv_stem
-                    self.bn1 = efficientnet.bn1
-                    self.blocks = efficientnet.blocks
-                    self.conv_head = efficientnet.conv_head
-                    self.bn2 = efficientnet.bn2
-                    self.global_pool = efficientnet.global_pool
-                    
-                    # Get the feature dimension
-                    self.num_features = efficientnet.num_features
-                
-                def forward(self, x):
-                    if self.wrapper is not None:
-                        x = x.repeat(1, 3, 1, 1)  # Convert grayscale to RGB
-                    
-                    # EfficientNet forward without the classifier
-                    x = self.features(x)
-                    x = self.bn1(x)
-                    x = self.blocks(x)
-                    x = self.conv_head(x)
-                    x = self.bn2(x)
-                    x = self.global_pool(x)
-                    x = x.flatten(1)
-                    return x
-            
-            feature_extractor = EfficientNetFeatureExtractor(model)
+        # Reuse the same GenericFeatureExtractor class defined above
+        if model_type:
+            feature_extractor = GenericFeatureExtractor(model, model_type)
             feature_size = feature_extractor.num_features
         else:
-            # For other models, create simple feature extractor
-            if hasattr(model, 'features'):
-                feature_extractor = model.features
-                # Estimate feature size
-                dummy_input = torch.randn(1, benchmark_info.channels, 64, 64).to(device)
-                with torch.no_grad():
-                    dummy_features = feature_extractor(dummy_input)
-                feature_size = dummy_features.shape[1]
-            else:
-                # Fallback: use the whole model except last layer
-                print(f"Warning: Pure NCM with {model_type} may not work optimally.")
-                feature_extractor = nn.Sequential(*list(model.children())[:-1])
-                feature_size = 512  # Default guess
+            # Fallback for unknown model types
+            raise ValueError(f"Pure NCM requires a known model type, got: {model_type}")
         
         feature_extractor = feature_extractor.to(device)
         
