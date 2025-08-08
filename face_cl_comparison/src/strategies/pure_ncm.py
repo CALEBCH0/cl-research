@@ -58,6 +58,7 @@ class PureNCM(SupervisedTemplate):
     
     def __init__(
         self,
+        *,  # Force keyword-only arguments as per Avalanche convention
         feature_extractor: nn.Module,
         feature_size: int,
         num_classes: int,

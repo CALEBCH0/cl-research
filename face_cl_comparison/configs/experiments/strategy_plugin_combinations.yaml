@@ -1,0 +1,38 @@
+# Strategy + Plugin Combinations Experiment
+name: strategy_plugin_combinations
+description: Test combining base strategies with replay plugin
+
+# What to compare
+comparison:
+  vary:
+    # Format: "strategy+plugins"
+    strategy.name:
+      - naive              # Baseline
+      - ewc                # EWC alone
+      - ewc_replay         # EWC + Replay plugin
+      - slda               # SLDA alone  
+      - slda_replay        # SLDA + Replay plugin
+      - mas                # MAS alone
+      - mas_replay         # MAS + Replay plugin
+
+# Fixed settings
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1
+    
+  strategy:
+    params:
+      mem_size: 200  # For replay variants
+      
+  dataset:
+    name: olivetti
+    n_experiences: 8
+    
+  training:
+    epochs_per_experience: 10
+    batch_size: 16
+    debug: true
+    seed: 42
+    
+# This tests if combining regularization methods with replay improves performance

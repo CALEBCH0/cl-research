@@ -165,8 +165,8 @@ def main():
                 
             except Exception as e:
                 print(f"Error in run {run_config['name']} with seed {seed}: {str(e)}")
-                if debug_mode:
-                    print(f"Error type: {type(e).__name__}")
+                print(f"Error type: {type(e).__name__}")
+                if debug_mode or 'pure_ncm' in run_config['name']:  # Always show traceback for pure_ncm
                     print("Traceback:")
                     traceback.print_exc()
                 continue

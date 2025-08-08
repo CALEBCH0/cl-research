@@ -26,7 +26,8 @@ from avalanche.training.supervised import (
 from src.strategies.pure_ncm import PureNCM
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger, BaseLogger
-from avalanche.training.plugins import EvaluationPlugin
+from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
+from avalanche.training.storage_policy import ExperienceBalancedBuffer
 
 # Optional imports with fallback
 try:
@@ -230,6 +231,25 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         'evaluator': eval_plugin
     }
     
+    # Check if this is a combination strategy (e.g., "ewc_replay")
+    plugins = []
+    if '_replay' in strategy_name:
+        # Add replay plugin
+        storage_policy = ExperienceBalancedBuffer(
+            max_size=mem_size,
+            adaptive_size=True
+        )
+        replay_plugin = ReplayPlugin(
+            mem_size=mem_size,
+            storage_policy=storage_policy
+        )
+        plugins.append(replay_plugin)
+        # Remove _replay suffix to get base strategy
+        strategy_name = strategy_name.replace('_replay', '')
+    
+    if plugins:
+        base_kwargs['plugins'] = plugins
+    
     if strategy_name == 'naive':
         return Naive(**base_kwargs)
     elif strategy_name == 'ewc':
@@ -369,7 +389,8 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
             'eval_mb_size': kwargs.get('batch_size', 32) * 2,
             'device': device,
             'evaluator': eval_plugin,
-            'train_epochs': 1  # SLDA typically uses 1 epoch
+            'train_epochs': 1,  # SLDA typically uses 1 epoch
+            'plugins': plugins if plugins else None  # Add any plugins
         }
         return StreamingLDA(**slda_kwargs)
     elif strategy_name == 'pure_ncm':
