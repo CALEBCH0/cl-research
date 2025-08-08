@@ -1,0 +1,38 @@
+# Quick test of plugin naming
+name: quick_plugin_test
+description: Quick test to verify plugin naming and formatting
+
+comparison:
+  strategies:
+    - naive
+    - name: ewc_replay
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 200
+    - name: ewc_replay_lwf
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 200
+        - name: lwf
+          params:
+            alpha: 0.5
+
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1
+    
+  dataset:
+    name: olivetti
+    n_experiences: 2  # Quick test
+    
+  training:
+    epochs_per_experience: 1  # Quick test
+    batch_size: 16
+    lr: 0.001
+    debug: true
+    seed: 42

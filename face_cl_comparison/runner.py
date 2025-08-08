@@ -42,14 +42,14 @@ def generate_runs(config):
                 # Strategy with configuration
                 strategy_name = strategy_config.get('name')
                 base_strategy = strategy_config.get('base', strategy_name)
-                plugins = strategy_config.get('plugins', [])
+                plugins = strategy_config.get('plugins', [])  # Default to empty list if not specified
                 
-                # Create readable name
+                # Create readable name - always show base strategy and plugins
                 if plugins:
-                    plugin_names = "+".join([p['name'] if isinstance(p, dict) else p for p in plugins])
-                    display_name = f"{strategy_name}_{plugin_names}"
+                    plugin_names = "_".join([p['name'] if isinstance(p, dict) else p for p in plugins])
+                    display_name = f"{base_strategy}_{plugin_names}"
                 else:
-                    display_name = strategy_name
+                    display_name = base_strategy
                 
                 run_config = {
                     'name': display_name,
@@ -57,9 +57,10 @@ def generate_runs(config):
                     'plugins': plugins
                 }
                 
-                # Add any extra parameters
+                # Add strategy-specific parameters
                 if 'params' in strategy_config:
-                    run_config.update(strategy_config['params'])
+                    # Store strategy params separately to pass to create_strategy
+                    run_config['strategy_params'] = strategy_config['params']
             
             runs.append(run_config)
     
@@ -86,11 +87,12 @@ def generate_runs(config):
                 elif param_path == 'strategy.plugins':
                     run_config['plugins'] = value
                     # Create a readable name for plugin combinations
-                    if value is None:
-                        plugin_names = "none"
+                    if value is None or value == []:
+                        # No plugins, use strategy name only
+                        pass
                     else:
-                        plugin_names = "+".join([p['name'] if isinstance(p, dict) else p for p in value])
-                    run_config['name'] = f"{run_config.get('strategy', 'unknown')}_{plugin_names}"
+                        plugin_names = "_".join([p['name'] if isinstance(p, dict) else p for p in value])
+                        run_config['name'] = f"{run_config.get('strategy', 'unknown')}_{plugin_names}"
             
             runs.append(run_config)
     
@@ -192,20 +194,33 @@ def main():
                 if not strategy_name and 'strategy' in fixed:
                     strategy_name = fixed['strategy'].get('name', 'naive')
                 
-                result = run_training(
-                    benchmark_name=dataset_name,
-                    strategy_name=strategy_name,
-                    model_type=model_name or 'mlp',
-                    device=device,
-                    experiences=fixed.get('dataset', {}).get('n_experiences', 5),
-                    epochs=fixed.get('training', {}).get('epochs_per_experience', 10),
-                    batch_size=fixed.get('training', {}).get('batch_size', 32),
-                    mem_size=strategy_config.get('params', {}).get('mem_size', run_config.get('mem_size', 500)),
-                    lr=fixed.get('training', {}).get('lr', 0.001),
-                    seed=seed,
-                    verbose=debug_mode,  # Only verbose in debug mode
-                    plugins_config=run_config.get('plugins', None)
-                )
+                # Merge strategy-specific params with defaults
+                strategy_specific_params = run_config.get('strategy_params', {})
+                default_params = strategy_config.get('params', {})
+                
+                # Build kwargs for run_training
+                training_kwargs = {
+                    'benchmark_name': dataset_name,
+                    'strategy_name': strategy_name,
+                    'model_type': model_name or 'mlp',
+                    'device': device,
+                    'experiences': fixed.get('dataset', {}).get('n_experiences', 5),
+                    'epochs': fixed.get('training', {}).get('epochs_per_experience', 10),
+                    'batch_size': fixed.get('training', {}).get('batch_size', 32),
+                    'mem_size': strategy_specific_params.get('mem_size', default_params.get('mem_size', 500)),
+                    'lr': fixed.get('training', {}).get('lr', 0.001),
+                    'seed': seed,
+                    'verbose': debug_mode,
+                    'plugins_config': run_config.get('plugins', None)
+                }
+                
+                # Add any additional strategy-specific parameters
+                # These will be passed as **kwargs to create_strategy
+                for key, value in strategy_specific_params.items():
+                    if key not in training_kwargs:
+                        training_kwargs[key] = value
+                
+                result = run_training(**training_kwargs)
                 
                 # Add run info to result
                 result['run_name'] = run_config['name']
@@ -262,7 +277,9 @@ def main():
         
         if debug_mode:
             # Single seed - show simple table
-            print(df[['run_name', 'strategy', 'model', 'dataset_name', 'average_accuracy']].to_string(index=False))
+            for _, row in df.iterrows():
+                print(f"{row['run_name']:<{tab_size}} {row['strategy']:<{tab_size}} {row['model']:<{tab_size}} {row['dataset_name']:<{tab_size}} "
+                      f"{row['average_accuracy']:.4f}")
         else:
             # Multiple seeds - show mean ± std
             for _, row in df.iterrows():

@@ -9,8 +9,7 @@ comparison:
     - naive
     
     # Pure NCM with replay (though it won't help since no training)
-    - name: pure_ncm
-      plugins: []
+    - pure_ncm
     
     - name: pure_ncm_replay
       base: pure_ncm
@@ -20,8 +19,7 @@ comparison:
             mem_size: 200
     
     # SLDA variants
-    - name: slda
-      plugins: []
+    - slda
     
     - name: slda_replay
       base: slda
@@ -32,12 +30,10 @@ comparison:
             storage_policy: class_balanced
     
     # iCaRL (has built-in replay)
-    - name: icarl
-      plugins: []
+    - icarl
     
     # EWC with multiple plugins
-    - name: ewc
-      plugins: []
+    - ewc
       
     - name: ewc_replay
       base: ewc
@@ -58,8 +54,7 @@ comparison:
             temperature: 2.0
     
     # Replay baseline
-    - name: replay
-      plugins: []
+    - replay
 
 # Fixed settings
 fixed:

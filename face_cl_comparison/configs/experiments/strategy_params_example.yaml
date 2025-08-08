@@ -1,0 +1,86 @@
+# Example: Setting both strategy and plugin parameters
+name: strategy_params_example
+description: Demonstrate setting parameters for both base strategies and plugins
+
+comparison:
+  strategies:
+    # EWC with default parameters
+    - name: ewc_default
+      base: ewc
+    
+    # EWC with custom parameters
+    - name: ewc_custom
+      base: ewc
+      params:
+        ewc_lambda: 5000      # Much stronger regularization
+        mode: separate        # Different mode
+        decay_factor: 0.5     # Faster decay
+    
+    # EWC with custom parameters AND replay plugin
+    - name: ewc_custom_replay
+      base: ewc
+      params:
+        ewc_lambda: 5000
+        mode: separate
+        decay_factor: 0.5
+      plugins:
+        - name: replay
+          params:
+            mem_size: 1000    # Large replay buffer
+            storage_policy: class_balanced
+    
+    # LwF with different temperatures
+    - name: lwf_low_temp
+      base: lwf
+      params:
+        alpha: 0.7
+        temperature: 1.0      # Lower temperature = sharper distributions
+    
+    - name: lwf_high_temp
+      base: lwf
+      params:
+        alpha: 0.7
+        temperature: 5.0      # Higher temperature = softer distributions
+    
+    # GEM with different memory constraints
+    - name: gem_small
+      base: gem
+      params:
+        patterns_per_exp: 100    # Fewer patterns per experience
+        memory_strength: 0.3     # Weaker memory constraint
+    
+    - name: gem_large
+      base: gem
+      params:
+        patterns_per_exp: 500    # More patterns per experience
+        memory_strength: 0.7     # Stronger memory constraint
+    
+    # Combination: Custom SI with replay and LwF
+    - name: si_combo
+      base: si
+      params:
+        si_lambda: 0.01          # 100x stronger than default
+      plugins:
+        - name: replay
+          params:
+            mem_size: 400
+        - name: lwf
+          params:
+            alpha: 0.3           # Less weight on distillation
+            temperature: 3.0
+
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1
+    
+  dataset:
+    name: olivetti
+    n_experiences: 8
+    
+  training:
+    epochs_per_experience: 5
+    batch_size: 16
+    lr: 0.001
+    debug: true
+    seed: 42

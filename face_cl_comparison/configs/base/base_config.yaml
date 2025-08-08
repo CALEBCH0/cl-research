@@ -2,92 +2,206 @@
 name: face_cl_experiment
 description: Face recognition continual learning experiment
 
-# Experiment settings
-experiment:
-  seed: 42
-  device: cuda
-  num_workers: 4
-  save_results: true
-  output_dir: ./results/${name}
+# =====================================
+# Experiment Comparison Settings
+# =====================================
+comparison:
+  # Option 1: Simple strategy list (no plugins)
+  # strategies:
+  #   - naive
+  #   - replay
+  #   - ewc
   
-# Model configuration
-model:
-  backbone:
-    name: resnet50
-    pretrained: true
-    frozen_stages: 0
-  
-  head:
-    type: arcface
-    embedding_dim: 512
-    margin: 0.5
-    scale: 64
+  # Option 2: Strategies with plugins
+  strategies:
+    # Baseline without any CL mechanism
+    - naive
     
-# Dataset configuration  
-dataset:
-  name: olivetti_faces
-  n_experiences: 10
-  n_classes_per_experience: 4
-  
-  # Data loading
-  batch_size: 32
-  num_workers: 4
-  pin_memory: true
-  
-  # Augmentation
-  train_augmentation:
-    random_flip: 0.5
-    color_jitter: 0.2
-    random_rotation: 10
+    # Standard replay
+    - name: replay
+      plugins: []
     
-  test_augmentation:
-    center_crop: true
+    # EWC with replay plugin
+    - name: ewc_replay
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+            storage_policy: experience_balanced
     
-# Training configuration
-training:
-  epochs_per_experience: 20
-  
-  optimizer:
-    name: adamw
+    # Advanced combination
+    - name: ewc_replay_lwf
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+        - name: lwf
+          params:
+            alpha: 0.5
+            temperature: 2.0
+    
+    # NCM-based methods
+    - name: slda
+      plugins: []
+    
+    - name: slda_replay
+      base: slda
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+            storage_policy: class_balanced
+    
+    - name: icarl
+      plugins: []  # iCaRL has built-in exemplar management
+
+# =====================================
+# Fixed Settings (applied to all runs)
+# =====================================
+fixed:
+  # Model configuration
+  model:
+    backbone:
+      name: efficientnet_b1  # Options: mlp, cnn, efficientnet_b1, resnet50
+      pretrained: true       # For timm models
+    
+    # Optional: Face recognition specific
+    # head:
+    #   type: arcface
+    #   embedding_dim: 512
+    #   margin: 0.5
+    #   scale: 64
+      
+  # Dataset configuration  
+  dataset:
+    name: olivetti         # Options: olivetti, mnist, cifar10, fmnist
+    n_experiences: 8       # Number of tasks/experiences
+    # n_classes: 40        # Total classes (auto-determined for standard datasets)
+    
+  # Training configuration
+  training:
+    epochs_per_experience: 10
+    batch_size: 16
     lr: 0.001
-    weight_decay: 0.0001
     
-  scheduler:
-    name: cosine
-    T_max: 200
+    # Multi-seed evaluation
+    debug: false           # true = single seed (fast), false = multi-seed (robust)
+    seed: 42              # Used when debug=true
+    seeds: [42, 123, 456, 789, 1011]  # Used when debug=false
     
-  loss:
-    name: cross_entropy
-    label_smoothing: 0.1
+    # Optional: Advanced training settings
+    # optimizer:
+    #   name: adamw
+    #   weight_decay: 0.0001
+    #   
+    # scheduler:
+    #   name: cosine
+    #   T_max: 200
+      
+  # Strategy-specific parameters
+  strategy:
+    params:
+      # For replay-based strategies
+      mem_size: 500
+      
+      # For iCaRL
+      mem_size_per_class: 20
+      fixed_memory: true
+      
+      # For SLDA
+      input_size: 1280  # EfficientNet-B1 feature size
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+      # For EWC
+      ewc_lambda: 0.4
+      mode: online
+      decay_factor: 0.1
+      
+      # For LwF
+      alpha: 0.5
+      temperature: 2.0
+      
+      # For GEM
+      patterns_per_exp: 256
+      memory_strength: 0.5
+      
+  # Evaluation configuration
+  evaluation:
+    primary_metric: average_accuracy
     
-# CL Strategy configuration
-strategy:
-  name: replay
-  params:
-    mem_size: 500
-    
-# Evaluation configuration
-evaluation:
-  eval_every: 1  # Evaluate after every N experiences
-  
-  metrics:
-    - accuracy
-    - forgetting
-    - backward_transfer
-    - forward_transfer
-    - face_verification_accuracy
-    
-  # Face-specific evaluation
-  face_verification:
-    distance_metric: cosine
-    far_levels: [0.01, 0.001]  # 1%, 0.1% FAR
-    
-# Logging configuration
-logging:
-  use_tensorboard: true
-  use_wandb: false
-  log_every: 10  # Log every N batches
-  
-  wandb:
-    project: face_cl
-    entity: your_username
+    # Optional: Additional metrics
+    # metrics:
+    #   - accuracy
+    #   - forgetting
+    #   - backward_transfer
+    #   - forward_transfer
+
+# =====================================
+# Plugin Configuration Reference
+# =====================================
+# Available plugins and their parameters:
+#
+# replay:
+#   mem_size: 500
+#   storage_policy: experience_balanced  # or class_balanced, reservoir
+#   batch_size_mem: null               # Replay batch size
+#   task_balanced: true                # Balance across tasks
+#
+# ewc:
+#   ewc_lambda: 0.4
+#   mode: online                       # or separate
+#   decay_factor: 0.1
+#   keep_importance_data: false
+#
+# lwf:
+#   alpha: 0.5                         # Distillation weight
+#   temperature: 2.0                   # Softmax temperature
+#
+# feature_distillation:
+#   alpha: 0.5
+#   temperature: 2.0
+#   loss: l2                          # or kl
+#
+# gem:
+#   patterns_per_exp: 256
+#   memory_strength: 0.5
+#
+# mas:
+#   lambda_reg: 1.0
+#   alpha: 0.5
+#
+# si:
+#   si_lambda: 0.0001
+#
+# rwalk:
+#   ewc_lambda: 0.4
+#   ewc_alpha: 0.9
+#   delta_t: 10
+#
+# lr_scheduler:
+#   scheduler_type: step              # or cosine, reduce_on_plateau
+#   step_size: 30                     # For step scheduler
+#   gamma: 0.1                        # For step scheduler
+#   T_max: 100                        # For cosine scheduler
+
+# =====================================
+# Example Usage
+# =====================================
+# 1. Run with this config:
+#    python runner.py --config configs/base/base_config.yaml
+#
+# 2. Override specific settings:
+#    python runner.py --config configs/base/base_config.yaml --gpu 1
+#
+# 3. Create experiment-specific config by extending this base:
+#    In configs/experiments/my_exp.yaml:
+#    ```yaml
+#    # Include base config values here and override as needed
+#    name: my_specific_experiment
+#    comparison:
+#      strategies:
+#        - your_strategies_here
+#    ```

@@ -257,19 +257,30 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
     if strategy_name == 'naive':
         return Naive(**base_kwargs)
     elif strategy_name == 'ewc':
-        return EWC(**base_kwargs, ewc_lambda=0.4, mode='online', decay_factor=0.1)
+        return EWC(**base_kwargs, 
+                   ewc_lambda=kwargs.get('ewc_lambda', 0.4), 
+                   mode=kwargs.get('mode', 'online'), 
+                   decay_factor=kwargs.get('decay_factor', 0.1))
     elif strategy_name == 'replay':
         return Replay(**base_kwargs, mem_size=mem_size)
     elif strategy_name == 'gem':
-        return GEM(**base_kwargs, patterns_per_exp=256, memory_strength=0.5)
+        return GEM(**base_kwargs, 
+                   patterns_per_exp=kwargs.get('patterns_per_exp', 256), 
+                   memory_strength=kwargs.get('memory_strength', 0.5))
     elif strategy_name == 'agem':
-        return AGEM(**base_kwargs, patterns_per_exp=256, sample_size=256)
+        return AGEM(**base_kwargs, 
+                    patterns_per_exp=kwargs.get('patterns_per_exp', 256), 
+                    sample_size=kwargs.get('sample_size', 256))
     elif strategy_name == 'lwf':
-        return LwF(**base_kwargs, alpha=0.5, temperature=2)
+        return LwF(**base_kwargs, 
+                   alpha=kwargs.get('alpha', 0.5), 
+                   temperature=kwargs.get('temperature', 2))
     elif strategy_name == 'si':
-        return SI(**base_kwargs, si_lambda=0.0001)
+        return SI(**base_kwargs, si_lambda=kwargs.get('si_lambda', 0.0001))
     elif strategy_name == 'mas':
-        return MAS(**base_kwargs, lambda_reg=1, alpha=0.5)
+        return MAS(**base_kwargs, 
+                    lambda_reg=kwargs.get('lambda_reg', 1), 
+                    alpha=kwargs.get('alpha', 0.5))
     elif strategy_name == 'gdumb':
         return GDumb(**base_kwargs, mem_size=mem_size)
     elif strategy_name == 'cumulative':
