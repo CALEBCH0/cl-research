@@ -1,54 +1,80 @@
 # Backbone comparison experiment
 name: backbone_comparison
-description: Compare different backbone architectures for face CL
+description: Compare different backbone architectures using SLDA strategy
 
-# Inherit from base
-base_config: ../base/base_config.yaml
-
-# What to compare
+# Compare different model architectures with SLDA
 comparison:
-  type: grid  # grid search over all combinations
-  
+  # Vary only the backbone architecture
   vary:
-    # Different backbones to test
     model.backbone.name:
-      - resnet18
-      - resnet50
-      - mobilenetv3_small
-      - mobilenetv3_large
-      - efficientnet_b0
-      - efficientnet_b2
-    
-    # Test with different CL strategies
-    strategy.name:
-      - naive  # baseline
-      - replay
-      - ewc
-    
-    # Different memory sizes for replay
-    strategy.params.mem_size:
-      - 500
-      - 1000
+      # Lightweight models
+      - mobilenetv3_small   # ~2.5M params
+      - mobilenetv3_large   # ~5.4M params
+      - efficientnet_b0     # ~5.3M params
       
-# Fixed settings for this experiment
+      # Medium models
+      - resnet18            # ~11.7M params
+      - efficientnet_b1     # ~7.8M params (our default)
+      - efficientnet_b2     # ~9.1M params
+      
+      # Larger models
+      - resnet50            # ~25.6M params
+      - efficientnet_b3     # ~12.2M params
+      - efficientnet_b4     # ~19.3M params
+
+# Fixed settings
 fixed:
+  # Use SLDA as the strategy for all backbone comparisons
+  strategy:
+    name: slda
+    params:
+      # SLDA specific parameters
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      # input_size will be set automatically based on the model
+  
+  model:
+    backbone:
+      pretrained: true    # Use ImageNet pretrained weights
+      
   dataset:
-    name: olivetti_faces
-    n_experiences: 10
+    name: olivetti       # 40 classes, good for testing
+    n_experiences: 8
     
   training:
-    epochs_per_experience: 15
+    epochs_per_experience: 1  # SLDA typically uses 1 epoch
+    batch_size: 16       # May need adjustment for larger models
+    lr: 0.001
     
-  model:
-    head:
-      type: arcface
-      
-# Evaluation focus
-evaluation:
-  primary_metric: average_accuracy
-  
-  additional_analysis:
-    - plot_backbone_vs_accuracy
-    - plot_model_size_vs_performance
-    - plot_inference_time_comparison
-    - memory_usage_analysis
+    # Multi-seed evaluation
+    debug: false
+    seeds: [42, 123, 456, 789, 1011]  # 5 seeds for robust comparison
+    
+  evaluation:
+    primary_metric: average_accuracy
+    
+    # Track efficiency metrics
+    additional_metrics:
+      - model_params       # Number of parameters
+      - inference_time     # Time per forward pass
+      - memory_usage       # GPU memory usage
+      - training_time      # Time per experience
+
+# Model specifications for reference
+# Feature dimensions (important for SLDA):
+# - MobileNetV3-Small: 576
+# - MobileNetV3-Large: 960
+# - EfficientNet-B0: 1280
+# - ResNet-18: 512
+# - EfficientNet-B1: 1280
+# - EfficientNet-B2: 1408
+# - ResNet-50: 2048
+# - EfficientNet-B3: 1536
+# - EfficientNet-B4: 1792
+
+# Expected insights:
+# - SLDA is efficient with all models (no backprop on features)
+# - Smaller models (MobileNet) fastest but potentially lower accuracy
+# - EfficientNet models should provide good accuracy/efficiency tradeoff
+# - ResNet50 may have high accuracy but slower feature extraction
+# - Feature dimension affects SLDA's covariance matrix size

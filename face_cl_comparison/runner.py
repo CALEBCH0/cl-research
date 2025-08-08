@@ -29,6 +29,7 @@ def generate_runs(config):
     if 'comparison' in config and 'strategies' in config['comparison']:
         # New format: each strategy has its own plugin config
         strategies = config['comparison']['strategies']
+        strategy_runs = []
         
         for strategy_config in strategies:
             if isinstance(strategy_config, str):
@@ -62,7 +63,38 @@ def generate_runs(config):
                     # Store strategy params separately to pass to create_strategy
                     run_config['strategy_params'] = strategy_config['params']
             
-            runs.append(run_config)
+            strategy_runs.append(run_config)
+        
+        # Check if there's also a 'vary' section to combine with strategies
+        if 'vary' in config['comparison']:
+            vary_params = config['comparison']['vary']
+            param_names = list(vary_params.keys())
+            param_values = list(vary_params.values())
+            
+            # Create cartesian product of strategies and vary parameters
+            for strategy_run in strategy_runs:
+                for values in itertools.product(*param_values):
+                    # Copy the strategy run config
+                    run_config = strategy_run.copy()
+                    
+                    # Add the vary parameters
+                    vary_suffix_parts = []
+                    for param_path, value in zip(param_names, values):
+                        parts = param_path.split('.')
+                        if parts[0] == 'model' and parts[-1] == 'name':
+                            run_config['model'] = value
+                            vary_suffix_parts.append(f"model={value}")
+                        # Add other vary parameters as needed
+                    
+                    # Update the run name to include vary parameters
+                    if vary_suffix_parts:
+                        vary_suffix = "_".join(vary_suffix_parts)
+                        run_config['name'] = f"{run_config['name']}_{vary_suffix}"
+                    
+                    runs.append(run_config)
+        else:
+            # No vary section, just use strategy runs
+            runs = strategy_runs
     
     elif 'comparison' in config and 'vary' in config['comparison']:
         # Original format: grid search over parameters

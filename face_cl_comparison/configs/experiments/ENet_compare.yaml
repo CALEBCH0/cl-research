@@ -1,0 +1,79 @@
+# EfficientNet model variants comparison
+name: efficientnet_comparison
+description: Compare different EfficientNet variants for face recognition CL
+
+# Compare different model architectures
+comparison:
+  # Vary the model backbone
+  vary:
+    model.backbone.name:
+      - efficientnet_b0   # Smallest, fastest
+      - efficientnet_b1   # Our default
+      - efficientnet_b2   
+      - efficientnet_b3   
+      - efficientnet_b4   # Getting larger
+      # - efficientnet_b5   # Uncomment for more comprehensive comparison
+      # - efficientnet_b6   # These require significant memory
+      # - efficientnet_b7   # Largest
+      
+    # Also test with different strategies
+    strategy.name:
+      - naive             # Baseline
+      - replay            # Standard replay
+      - slda              # NCM-based (efficient)
+      - icarl             # NCM with exemplars
+
+# Fixed settings
+fixed:
+  model:
+    backbone:
+      pretrained: true    # Use ImageNet pretrained weights
+    
+  dataset:
+    name: olivetti
+    n_experiences: 8
+    
+  training:
+    epochs_per_experience: 5
+    batch_size: 16       # May need to reduce for larger models
+    lr: 0.001
+    
+    # Multi-seed evaluation for robust comparison
+    debug: false
+    seeds: [42, 123, 456]  # 3 seeds for quicker results
+    
+  strategy:
+    params:
+      # For replay/icarl
+      mem_size: 500
+      
+      # For SLDA - will be adjusted based on model
+      # input_size set dynamically based on model
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+  evaluation:
+    primary_metric: average_accuracy
+    # Also track model size and inference time
+    track_efficiency: true
+
+# Model specifications for reference
+# EfficientNet variants (params, GFLOPs @ 224x224):
+# B0: 5.3M params, 0.39 GFLOPs
+# B1: 7.8M params, 0.70 GFLOPs (default)
+# B2: 9.1M params, 1.0 GFLOPs
+# B3: 12.2M params, 1.8 GFLOPs
+# B4: 19.3M params, 4.2 GFLOPs
+# B5: 30.4M params, 9.9 GFLOPs
+# B6: 43.0M params, 19.0 GFLOPs
+# B7: 66.3M params, 37.0 GFLOPs
+
+# Feature dimensions (important for NCM methods):
+# B0: 1280
+# B1: 1280
+# B2: 1408
+# B3: 1536
+# B4: 1792
+# B5: 2048
+# B6: 2304
+# B7: 2560
