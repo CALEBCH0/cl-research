@@ -23,9 +23,7 @@ from avalanche.training.supervised import (
     SynapticIntelligence as SI, MAS, GDumb,
     Cumulative, JointTraining, ICaRL, StreamingLDA
 )
-from avalanche.training.plugins import (
-    ReplayPlugin
-)
+from src.strategies.pure_ncm import PureNCM
 from avalanche.evaluation.metrics import accuracy_metrics, loss_metrics, forgetting_metrics
 from avalanche.logging import InteractiveLogger, TensorboardLogger, TextLogger, BaseLogger
 from avalanche.training.plugins import EvaluationPlugin
@@ -219,7 +217,7 @@ def create_model(model_type, benchmark_info):
 
 
 def create_strategy(strategy_name, model, optimizer, criterion, device, 
-                   eval_plugin, mem_size=200, model_type=None, **kwargs):
+                   eval_plugin, mem_size=200, model_type=None, benchmark_info=None, **kwargs):
     """Create strategy with given parameters."""
     base_kwargs = {
         'model': model,
@@ -374,6 +372,75 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
             'train_epochs': 1  # SLDA typically uses 1 epoch
         }
         return StreamingLDA(**slda_kwargs)
+    elif strategy_name == 'pure_ncm':
+        # Pure NCM requires a feature extractor
+        if model_type.startswith('efficientnet'):
+            # Create feature extractor for EfficientNet
+            class EfficientNetFeatureExtractor(nn.Module):
+                def __init__(self, base_model):
+                    super().__init__()
+                    if hasattr(base_model, 'model'):  # GrayToRGBWrapper
+                        self.wrapper = base_model
+                        efficientnet = base_model.model
+                    else:
+                        self.wrapper = None
+                        efficientnet = base_model
+                    
+                    # For timm EfficientNet models
+                    self.features = efficientnet.conv_stem
+                    self.bn1 = efficientnet.bn1
+                    self.blocks = efficientnet.blocks
+                    self.conv_head = efficientnet.conv_head
+                    self.bn2 = efficientnet.bn2
+                    self.global_pool = efficientnet.global_pool
+                    
+                    # Get the feature dimension
+                    self.num_features = efficientnet.num_features
+                
+                def forward(self, x):
+                    if self.wrapper is not None:
+                        x = x.repeat(1, 3, 1, 1)  # Convert grayscale to RGB
+                    
+                    # EfficientNet forward without the classifier
+                    x = self.features(x)
+                    x = self.bn1(x)
+                    x = self.blocks(x)
+                    x = self.conv_head(x)
+                    x = self.bn2(x)
+                    x = self.global_pool(x)
+                    x = x.flatten(1)
+                    return x
+            
+            feature_extractor = EfficientNetFeatureExtractor(model)
+            feature_size = feature_extractor.num_features
+        else:
+            # For other models, create simple feature extractor
+            if hasattr(model, 'features'):
+                feature_extractor = model.features
+                # Estimate feature size
+                dummy_input = torch.randn(1, benchmark_info.channels, 64, 64).to(device)
+                with torch.no_grad():
+                    dummy_features = feature_extractor(dummy_input)
+                feature_size = dummy_features.shape[1]
+            else:
+                # Fallback: use the whole model except last layer
+                print(f"Warning: Pure NCM with {model_type} may not work optimally.")
+                feature_extractor = nn.Sequential(*list(model.children())[:-1])
+                feature_size = 512  # Default guess
+        
+        feature_extractor = feature_extractor.to(device)
+        
+        # Pure NCM doesn't need optimizer/criterion in base_kwargs
+        return PureNCM(
+            feature_extractor=feature_extractor,
+            feature_size=feature_size,
+            num_classes=kwargs.get('num_classes', 10),
+            train_mb_size=kwargs.get('batch_size', 32),
+            train_epochs=kwargs.get('epochs', 1),
+            eval_mb_size=kwargs.get('batch_size', 32) * 2,
+            device=device,
+            evaluator=eval_plugin
+        )
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}")
 
@@ -430,8 +497,8 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     # Create strategy
     strategy = create_strategy(
         strategy_name, model, optimizer, criterion, device, eval_plugin,
-        mem_size=mem_size, model_type=model_type, epochs=epochs, batch_size=batch_size,
-        num_classes=benchmark_info.num_classes
+        mem_size=mem_size, model_type=model_type, benchmark_info=benchmark_info,
+        epochs=epochs, batch_size=batch_size, num_classes=benchmark_info.num_classes
     )
     
     # Training loop

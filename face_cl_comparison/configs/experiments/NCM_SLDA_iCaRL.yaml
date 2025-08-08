@@ -6,10 +6,11 @@ description: Compare NCM-based methods (SLDA, iCaRL) for face recognition
 comparison:
   vary:
     strategy.name:
-      - naive  # baseline
-      - slda   # Streaming LDA with NCM
-      - icarl  # iCaRL with NCM
-      - replay # standard replay for comparison
+      - naive     # baseline
+      - pure_ncm  # Pure NCM (no training)
+      - slda      # Streaming LDA with NCM
+      - icarl     # iCaRL with NCM
+      - replay    # standard replay for comparison
 
 # Fixed settings
 fixed:
