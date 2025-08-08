@@ -22,7 +22,8 @@ class NCMClassifier(nn.Module):
     def update_mean(self, features: torch.Tensor, labels: torch.Tensor):
         """Update class means with new features."""
         with torch.no_grad():
-            for c in range(self.num_classes):
+            unique_labels = labels.unique()
+            for c in unique_labels:
                 mask = labels == c
                 if mask.any():
                     class_features = features[mask]
@@ -33,18 +34,39 @@ class NCMClassifier(nn.Module):
                     new_mean = (old_mean * old_count + class_features.sum(0)) / new_count
                     self.class_means[c] = new_mean
                     self.class_counts[c] = new_count
+            
+            # Debug: print update info
+            if len(unique_labels) > 0:
+                print(f"Updated means for classes: {unique_labels.tolist()}, "
+                      f"counts: {[int(self.class_counts[c]) for c in unique_labels]}")
     
     def forward(self, features: torch.Tensor):
         """Classify based on nearest class mean."""
-        # Normalize features and means
-        features_norm = nn.functional.normalize(features, dim=1)
-        means_norm = nn.functional.normalize(self.class_means, dim=1)
+        # Check if we have any class means computed
+        if self.class_counts.sum() == 0:
+            # No means computed yet, return zeros
+            return torch.zeros(features.size(0), self.num_classes, device=features.device)
         
-        # Compute distances: [batch_size, num_classes]
-        distances = torch.cdist(features_norm, means_norm)
+        # Only compute distances for classes we've seen
+        seen_classes = (self.class_counts > 0).nonzero(as_tuple=True)[0]
+        
+        if len(seen_classes) == 0:
+            return torch.zeros(features.size(0), self.num_classes, device=features.device)
+        
+        # Normalize features and means for seen classes
+        features_norm = nn.functional.normalize(features, dim=1)
+        seen_means = self.class_means[seen_classes]
+        seen_means_norm = nn.functional.normalize(seen_means, dim=1)
+        
+        # Compute distances: [batch_size, num_seen_classes]
+        distances = torch.cdist(features_norm, seen_means_norm)
+        
+        # Create output tensor with large distances for unseen classes
+        output = torch.full((features.size(0), self.num_classes), float('inf'), device=features.device)
+        output[:, seen_classes] = distances
         
         # Return negative distances (so argmax gives nearest)
-        return -distances
+        return -output
 
 
 class PureNCM(SupervisedTemplate):
@@ -74,7 +96,7 @@ class PureNCM(SupervisedTemplate):
         self.ncm_classifier = NCMClassifier(feature_size, num_classes).to(device)
         
         # Freeze feature extractor
-        self.feature_extractor = feature_extractor
+        self.feature_extractor = feature_extractor.to(device)
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
         self.feature_extractor.eval()
@@ -120,6 +142,10 @@ class PureNCM(SupervisedTemplate):
             # Extract features (no gradients needed)
             with torch.no_grad():
                 features = self.feature_extractor(self.mb_x)
+            
+            # Debug info (only first batch)
+            if i == 0:
+                print(f"  Feature shape: {features.shape}, Labels: {self.mb_y.unique().tolist()}")
             
             # Update class means
             self.ncm_classifier.update_mean(features, self.mb_y)
