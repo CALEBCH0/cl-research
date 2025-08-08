@@ -215,7 +215,7 @@ def create_model(model_type, benchmark_info):
 
 
 def create_strategy(strategy_name, model, optimizer, criterion, device, 
-                   eval_plugin, mem_size=200, **kwargs):
+                   eval_plugin, mem_size=200, model_type=None, **kwargs):
     """Create strategy with given parameters."""
     base_kwargs = {
         'model': model,
@@ -251,7 +251,66 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
     elif strategy_name == 'joint':
         return JointTraining(**base_kwargs)
     elif strategy_name == 'icarl':
-        return ICaRL(**base_kwargs, memory_size=mem_size, buffer_transform=None, fixed_memory=True)
+        # ICaRL requires separate feature_extractor and classifier
+        if model_type.startswith('efficientnet'):
+            # Split EfficientNet into feature extractor and classifier
+            if hasattr(model, 'model'):  # GrayToRGBWrapper
+                efficientnet = model.model
+                
+                # Create feature extractor
+                class EfficientNetFeatures(nn.Module):
+                    def __init__(self, base_model):
+                        super().__init__()
+                        self.model = base_model
+                        self.wrapper = model  # Keep the wrapper
+                        
+                    def forward(self, x):
+                        # Apply gray to RGB if needed
+                        x = x.repeat(1, 3, 1, 1)
+                        # Get features before classifier
+                        x = self.model.forward_features(x)
+                        x = self.model.global_pool(x)
+                        x = x.flatten(1)
+                        return x
+                
+                feature_extractor = EfficientNetFeatures(efficientnet)
+                classifier = efficientnet.classifier
+            else:
+                # Direct EfficientNet model
+                class EfficientNetFeatures(nn.Module):
+                    def __init__(self, base_model):
+                        super().__init__()
+                        self.model = base_model
+                        
+                    def forward(self, x):
+                        x = self.model.forward_features(x)
+                        x = self.model.global_pool(x)
+                        x = x.flatten(1)
+                        return x
+                
+                feature_extractor = EfficientNetFeatures(model)
+                classifier = model.classifier
+        else:
+            # For other models, use simple split
+            # This is a simplified approach - ideally each model type should be handled
+            print(f"Note: ICaRL with {model_type} may not work optimally. Using simplified split.")
+            feature_extractor = nn.Sequential(*list(model.children())[:-1])
+            classifier = list(model.children())[-1]
+        
+        # ICaRL specific parameters without base_kwargs
+        return ICaRL(
+            feature_extractor=feature_extractor,
+            classifier=classifier,
+            optimizer=optimizer,
+            memory_size=mem_size,
+            buffer_transform=None,
+            fixed_memory=True,
+            train_mb_size=kwargs.get('batch_size', 32),
+            train_epochs=kwargs.get('epochs', 1),
+            eval_mb_size=kwargs.get('batch_size', 32) * 2,
+            device=device,
+            evaluator=eval_plugin
+        )
     elif strategy_name == 'slda':
         # SLDA requires a feature extractor model, not a classifier
         # For EfficientNet, we need to get the feature extractor part
@@ -301,7 +360,7 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
             'slda_model': feature_extractor,
             'criterion': criterion,
             'input_size': feature_size,
-            'num_classes': benchmark_info.num_classes,
+            'num_classes': kwargs.get('num_classes', 10),
             'shrinkage_param': 1e-4,
             'streaming_update_sigma': True,
             'train_mb_size': kwargs.get('batch_size', 32),
@@ -361,7 +420,7 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     # Create strategy
     strategy = create_strategy(
         strategy_name, model, optimizer, criterion, device, eval_plugin,
-        mem_size=mem_size, epochs=epochs, batch_size=batch_size,
+        mem_size=mem_size, model_type=model_type, epochs=epochs, batch_size=batch_size,
         num_classes=benchmark_info.num_classes
     )
     
