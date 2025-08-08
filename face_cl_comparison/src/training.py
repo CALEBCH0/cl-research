@@ -575,7 +575,7 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
             'slda_model': feature_extractor,
             'criterion': criterion,
             'input_size': feature_size,
-            'num_classes': kwargs.get('num_classes', 10),
+            'num_classes': benchmark_info.num_classes,  # Use actual number of classes from benchmark
             'shrinkage_param': 1e-4,
             'streaming_update_sigma': True,
             'train_mb_size': kwargs.get('batch_size', 32),
@@ -602,7 +602,7 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
         return PureNCM(
             feature_extractor=feature_extractor,
             feature_size=feature_size,
-            num_classes=kwargs.get('num_classes', 10),
+            num_classes=benchmark_info.num_classes,
             train_mb_size=kwargs.get('batch_size', 32),
             train_epochs=kwargs.get('epochs', 1),
             eval_mb_size=kwargs.get('batch_size', 32) * 2,
@@ -633,6 +633,14 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     torch.backends.cudnn.benchmark = False
     
     # Create benchmark
+    if verbose:
+        print(f"\n=== Running training ===")
+        print(f"Dataset: {benchmark_name}")
+        print(f"Strategy: {strategy_name}")
+        print(f"Model: {model_type}")
+        print(f"Experiences: {experiences}")
+        print(f"Seed: {seed}")
+    
     benchmark, benchmark_info = set_benchmark(benchmark_name, experiences, seed)
     
     # Create model
@@ -682,6 +690,13 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
         print("\nFinal evaluation...")
     eval_results = strategy.eval(benchmark.test_stream)
     
+    # Debug: print available keys
+    if verbose:
+        print(f"\nEvaluation results keys for {strategy_name} on {benchmark_name}:")
+        for k in sorted(eval_results.keys()):
+            if 'Top1_Acc' in k:
+                print(f"  {k}: {eval_results[k]:.4f}")
+    
     # Extract accuracies
     accuracies = []
     for i in range(benchmark.n_experiences):
@@ -689,7 +704,18 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
         if key in eval_results:
             accuracies.append(eval_results[key])
     
+    # If no accuracies found with Task000, try without task ID
+    if not accuracies:
+        for i in range(benchmark.n_experiences):
+            key = f'Top1_Acc_Exp/eval_phase/test_stream/Exp{i:03d}'
+            if key in eval_results:
+                accuracies.append(eval_results[key])
+    
     avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0.0
+    
+    if verbose:
+        print(f"\nExtracted accuracies: {accuracies}")
+        print(f"Average accuracy: {avg_accuracy:.4f}")
     
     return {
         'accuracies': accuracies,

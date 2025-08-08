@@ -102,6 +102,9 @@ def generate_runs(config):
                         if parts[0] == 'model' and parts[-1] == 'name':
                             run_config['model'] = value
                             vary_suffix_parts.append(f"model={value}")
+                        elif parts[0] == 'dataset' and parts[-1] == 'name':
+                            run_config['dataset'] = value
+                            vary_suffix_parts.append(f"name={value}")
                         # Add other vary parameters as needed
                     
                     # Update the run name to include vary parameters
@@ -130,6 +133,8 @@ def generate_runs(config):
                 parts = param_path.split('.')
                 if parts[0] == 'model' and parts[-1] == 'name':
                     run_config['model'] = value
+                elif parts[0] == 'dataset' and parts[-1] == 'name':
+                    run_config['dataset'] = value
                 elif parts[0] == 'strategy' and parts[-1] == 'name':
                     run_config['strategy'] = value
                 elif param_path == 'strategy.params.mem_size':
@@ -250,8 +255,10 @@ def main():
                 if not model_name and 'model' in fixed:
                     model_name = fixed['model'].get('backbone', {}).get('name', 'mlp')
                 
-                # Get dataset name
-                dataset_name = fixed.get('dataset', {}).get('name', 'mnist')
+                # Get dataset name from run_config first, then fixed config
+                dataset_name = run_config.get('dataset')
+                if not dataset_name:
+                    dataset_name = fixed.get('dataset', {}).get('name', 'mnist')
                 if dataset_name == 'splitmnist':
                     dataset_name = 'mnist'
                 
