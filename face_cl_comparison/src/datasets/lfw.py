@@ -68,8 +68,8 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     X = torch.FloatTensor(X).unsqueeze(1)  # Add channel dimension
     y = torch.LongTensor(y)
     
-    # Normalize to [0, 1]
-    X = X / 255.0
+    # Note: sklearn's fetch_lfw_people already returns normalized data in [0, 1] range
+    # Do NOT divide by 255 again!
     
     # Always resize to target size since we're not using sklearn's resize
     import torch.nn.functional as F
@@ -307,9 +307,9 @@ def create_lfw_controlled_benchmark(
     
     print(f"Loaded {len(X)} images of {len(class_names)} people")
     
-    # Add channel dimension and normalize
+    # Add channel dimension (data is already normalized by sklearn)
     X = torch.FloatTensor(X).unsqueeze(1)  # Add channel dimension
-    X = X / 255.0
+    # Note: sklearn's fetch_lfw_people already returns normalized data in [0, 1] range
     
     # Resize if needed
     import torch.nn.functional as F
