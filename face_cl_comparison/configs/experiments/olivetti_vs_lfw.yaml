@@ -1,0 +1,38 @@
+# Direct comparison: Olivetti vs LFW with similar class counts
+name: olivetti_vs_lfw
+description: Compare same strategy on Olivetti (40 classes) vs LFW subset (40 classes)
+
+comparison:
+  vary:
+    dataset.name:
+      - olivetti  # 40 classes, structured dataset
+      - lfw_30    # 30 classes, natural images
+      - lfw       # Use new subset config below
+
+fixed:
+  strategy:
+    name: slda
+    params:
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+  
+  model:
+    backbone:
+      name: efficientnet_b1
+      pretrained: true
+    
+  dataset:
+    # This applies when dataset.name = lfw
+    subset:
+      target_classes: 40  # Match Olivetti's 40 classes
+      min_samples_per_class: 20
+      selection_strategy: most_samples
+    n_experiences: 8  # 5 classes per experience
+    
+  training:
+    epochs_per_experience: 1
+    batch_size: 32
+    lr: 0.001
+    
+    debug: true  # Single seed for quick diagnosis
+    seed: 42
