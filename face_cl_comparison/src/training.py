@@ -132,38 +132,60 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
     elif benchmark_name.startswith('lfw'):
         # LFW (Labeled Faces in the Wild) dataset
         from src.datasets.lfw import create_lfw_benchmark, create_lfw_subset_benchmark
+        from src.datasets.lfw_configs import get_lfw_config, LFW_CONFIGS
         
-        if benchmark_name == 'lfw':
-            # Full LFW with people having 20+ images
+        # Check if it's a predefined config
+        if benchmark_name in LFW_CONFIGS:
+            config = get_lfw_config(benchmark_name)
             benchmark, dataset_info = create_lfw_benchmark(
                 n_experiences=experiences,
-                min_faces_per_person=20,
+                min_faces_per_person=config['min_faces_per_person'],
                 image_size=(64, 64),
                 seed=seed
             )
-        elif benchmark_name == 'lfw_subset':
-            # Subset with specific number of identities
-            benchmark, dataset_info = create_lfw_subset_benchmark(
-                n_identities=100,  # 100 people
-                n_experiences=experiences,
-                min_faces_per_person=20,
-                image_size=(64, 64),
-                seed=seed
-            )
-        else:
-            # Custom subset size, e.g., lfw_200 for 200 identities
+            print(f"\nUsing {benchmark_name}: {config['description']}")
+        
+        # Legacy number-based names (deprecated but still supported)
+        elif benchmark_name == 'lfw' or '_' in benchmark_name:
+            # Try to parse as number
             try:
                 n_identities = int(benchmark_name.split('_')[1])
+                print(f"\nWarning: Using deprecated format 'lfw_{n_identities}'.")
+                print("Please use predefined configs instead:")
+                for name, cfg in LFW_CONFIGS.items():
+                    print(f"  - {name}: {cfg['description']}")
+                
+                # Map to closest predefined config
+                if n_identities <= 20:
+                    actual_config = 'lfw_20'
+                elif n_identities <= 50:
+                    actual_config = 'lfw_50'
+                elif n_identities <= 80:
+                    actual_config = 'lfw_80'
+                elif n_identities <= 100:
+                    actual_config = 'lfw_100'
+                elif n_identities <= 150:
+                    actual_config = 'lfw_150'
+                else:
+                    actual_config = 'lfw_all'
+                
+                print(f"Mapping to {actual_config}")
+                config = get_lfw_config(actual_config)
+                benchmark, dataset_info = create_lfw_benchmark(
+                    n_experiences=experiences,
+                    min_faces_per_person=config['min_faces_per_person'],
+                    image_size=(64, 64),
+                    seed=seed
+                )
             except:
-                n_identities = 100  # Default
-            
-            benchmark, dataset_info = create_lfw_subset_benchmark(
-                n_identities=n_identities,
-                n_experiences=experiences,
-                min_faces_per_person=15,  # Lower threshold for more identities
-                image_size=(64, 64),
-                seed=seed
-            )
+                # Default 'lfw' means lfw_80
+                config = get_lfw_config('lfw_80')
+                benchmark, dataset_info = create_lfw_benchmark(
+                    n_experiences=experiences,
+                    min_faces_per_person=config['min_faces_per_person'],
+                    image_size=(64, 64),
+                    seed=seed
+                )
         
         input_size = 64 * 64
         num_classes = dataset_info['num_classes']

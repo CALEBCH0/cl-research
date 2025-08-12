@@ -47,13 +47,25 @@ python runner.py --exp NCM_SLDA_iCaRL
 
 ## Available Datasets
 
-| Dataset | Identities | Images | Use Case |
-|---------|------------|---------|----------|
-| `olivetti` | 40 | 400 | Quick tests, prototyping |
-| `lfw_50` | 50 | ~750+ | Small-scale experiments |
-| `lfw_100` | 100 | ~1,500+ | Medium-scale experiments |
-| `lfw_200` | 200 | ~3,000+ | Large-scale experiments |
-| `lfw` | 158+ | ~13,000 | Full LFW (min 20 imgs/person) |
+### Standard Datasets
+| Dataset | Identities | Images/Person | Total Images | Use Case |
+|---------|------------|---------------|--------------|----------|
+| `olivetti` | 40 | 10 | 400 | Quick tests, prototyping |
+
+### LFW Quality Subsets
+Choose based on your quality vs. scale needs:
+
+| Dataset | Identities | Min Images/Person | Total Images | Quality | Recommended For |
+|---------|------------|-------------------|--------------|---------|-----------------|
+| `lfw_small` | ~7 | 70+ | ~490 | ⭐⭐⭐⭐⭐ | Algorithm debugging, perfect data |
+| `lfw_20` | ~20 | 50+ | ~1,000 | ⭐⭐⭐⭐⭐ | High-quality small experiments |
+| `lfw_50` | ~50 | 30+ | ~1,500 | ⭐⭐⭐⭐ | Balanced quality/scale |
+| `lfw_80` | ~80 | 20+ | ~1,600 | ⭐⭐⭐⭐ | **Default choice** - good for most CL |
+| `lfw_100` | ~100 | 15+ | ~1,500 | ⭐⭐⭐ | Large-scale with acceptable quality |
+| `lfw_150` | ~150 | 10+ | ~1,500 | ⭐⭐ | Maximum recommended for CL |
+| `lfw_all` | ~400 | 5+ | ~2,000 | ⭐ | Not recommended - too few samples |
+
+**Rule of thumb**: For continual learning, use at least 10 images per person (15+ preferred).
 
 **Note**: LFW dataset will be automatically downloaded on first use (~200MB). It's cached locally after the first download, so subsequent runs will be much faster. The cache location is typically:
 - macOS: `~/scikit_learn_data/lfw_home/`
@@ -263,9 +275,10 @@ face_cl_comparison/
 3. **Memory Size**: For NCM methods, ensure sufficient memory (e.g., 10+ samples per class)
 4. **Face Datasets**: 
    - Olivetti (40 classes) - Fast prototyping and algorithm testing
-   - LFW subsets (50-200 classes) - Scalability testing
-   - Full LFW (158+ classes) - Real-world performance evaluation
-5. **LFW Configuration**: Adjust `min_faces_per_person` to control dataset size vs. identity diversity trade-off
+   - LFW predefined configs - Guaranteed quality with different scales
+   - Use `lfw_20` to `lfw_100` for reliable CL experiments
+   - Avoid `lfw_all` unless you need maximum scale
+5. **Dataset Quality**: Higher min_faces_per_person = fewer identities but better quality
 
 ## Common Issues
 

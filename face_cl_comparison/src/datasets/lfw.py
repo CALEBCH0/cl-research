@@ -39,13 +39,13 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     
     # Fetch LFW data
     # Note: sklearn's fetch_lfw_people expects resize as a float ratio, not tuple
-    # Default LFW images are 250x250, so we calculate the ratio
-    resize_ratio = image_size[0] / 250.0  # Assuming square images
+    # The original LFW images are 250x250, but the default output is 125x94
+    # We'll skip sklearn's resize and do it ourselves for better control
     
     print("Fetching LFW data...")
     lfw_people = fetch_lfw_people(
         min_faces_per_person=min_faces_per_person,
-        resize=resize_ratio,
+        resize=None,  # Don't resize with sklearn, we'll do it ourselves
         color=False,  # Grayscale for consistency with Olivetti
         funneled=True,  # Use aligned faces
         download_if_missing=True,
@@ -70,11 +70,10 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     # Normalize to [0, 1]
     X = X / 255.0
     
-    # Ensure exact size if needed (sklearn might give slightly different size)
-    if X.shape[2:] != image_size:
-        import torch.nn.functional as F
-        X = F.interpolate(X, size=image_size, mode='bilinear', align_corners=False)
-        print(f"Resized images to exact size: {image_size}")
+    # Always resize to target size since we're not using sklearn's resize
+    import torch.nn.functional as F
+    X = F.interpolate(X, size=image_size, mode='bilinear', align_corners=False)
+    print(f"Resized images from {lfw_people.images[0].shape} to {image_size}")
     
     # Split train/test per class to ensure all classes in both sets
     train_indices = []
@@ -139,6 +138,22 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     return benchmark, dataset_info
 
 
+# Cache for loaded LFW data to avoid reloading
+_lfw_cache = {}
+
+def _get_cached_lfw_data(min_faces_per_person, image_size):
+    """Get cached LFW data or load if not cached."""
+    cache_key = (min_faces_per_person, image_size)
+    if cache_key not in _lfw_cache:
+        benchmark, info = create_lfw_benchmark(
+            n_experiences=1,  # Load as single experience
+            min_faces_per_person=min_faces_per_person,
+            image_size=image_size,
+            seed=0  # Fixed seed for caching
+        )
+        _lfw_cache[cache_key] = (benchmark, info)
+    return _lfw_cache[cache_key]
+
 def create_lfw_subset_benchmark(n_identities=100, n_experiences=10, 
                                min_faces_per_person=20, image_size=(64, 64), 
                                seed=42):
@@ -146,20 +161,22 @@ def create_lfw_subset_benchmark(n_identities=100, n_experiences=10,
     
     Useful for controlled experiments with specific number of classes.
     """
-    # First load full LFW
-    benchmark_full, info_full = create_lfw_benchmark(
-        n_experiences=1,  # Load as single experience first
-        min_faces_per_person=min_faces_per_person,
-        image_size=image_size,
-        seed=seed
-    )
+    # Use cached data if available
+    benchmark_full, info_full = _get_cached_lfw_data(min_faces_per_person, image_size)
     
     # Get the data
     train_data = benchmark_full.train_stream[0].dataset
     test_data = benchmark_full.test_stream[0].dataset
     
+    # Check if we have enough classes
+    available_classes = info_full['num_classes']
+    if n_identities > available_classes:
+        print(f"Warning: Requested {n_identities} identities but only {available_classes} available.")
+        print(f"Using all {available_classes} identities instead.")
+        n_identities = available_classes
+    
     # Select subset of identities
-    all_classes = list(range(info_full['num_classes']))
+    all_classes = list(range(available_classes))
     rng = np.random.RandomState(seed)
     selected_classes = rng.choice(all_classes, size=n_identities, replace=False)
     selected_classes = sorted(selected_classes)

@@ -6,11 +6,12 @@ comparison:
   # Test on different dataset scales
   vary:
     dataset.name:
-      - olivetti      # 40 classes (baseline)
-      - lfw_50        # 50 classes
-      - lfw_100       # 100 classes  
-      - lfw_200       # 200 classes
-      # - lfw          # All classes with 20+ images (~158 classes)
+      - olivetti      # 40 classes, 10 imgs/person (baseline)
+      - lfw_20        # ~20 classes, 50+ imgs/person (high quality)
+      - lfw_50        # ~50 classes, 30+ imgs/person
+      - lfw_80        # ~80 classes, 20+ imgs/person
+      - lfw_100       # ~100 classes, 15+ imgs/person
+      # - lfw_150     # ~150 classes, 10+ imgs/person (minimum recommended)
 
 fixed:
   # Use SLDA for efficiency across all scales
