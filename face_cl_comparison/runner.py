@@ -217,6 +217,14 @@ def main():
         input_thread = threading.Thread(target=check_for_quit, daemon=True)
         input_thread.start()
     
+    # Check if dataset is fixed across all runs
+    dataset_names = [run.get('dataset', config.get('fixed', {}).get('dataset', {}).get('name', 'mnist')) 
+                     for run in runs]
+    fixed_dataset = len(set(dataset_names)) == 1
+    
+    # Cache for benchmarks to avoid reloading
+    benchmark_cache = {}
+    
     # Run experiments
     all_results = []
     
@@ -271,20 +279,51 @@ def main():
                 strategy_specific_params = run_config.get('strategy_params', {})
                 default_params = strategy_config.get('params', {})
                 
+                # Get subset config if present
+                subset_config = fixed.get('dataset', {}).get('subset', None)
+                
+                # Get or create benchmark (with caching)
+                n_experiences = fixed.get('dataset', {}).get('n_experiences', 5)
+                
+                # Include subset config in cache key if present
+                if subset_config:
+                    cache_key = (dataset_name, n_experiences, 
+                                frozenset(subset_config.items()) if subset_config else None)
+                else:
+                    cache_key = (dataset_name, n_experiences)
+                
+                if cache_key in benchmark_cache:
+                    # Reuse cached benchmark
+                    cached_benchmark, cached_info = benchmark_cache[cache_key]
+                    if debug_mode and seed_idx == 0:
+                        print(f"  Using cached benchmark for {dataset_name}")
+                else:
+                    # Create and cache benchmark
+                    from src.training import create_benchmark
+                    cached_benchmark, cached_info = create_benchmark(
+                        dataset_name, n_experiences, seed, subset_config
+                    )
+                    benchmark_cache[cache_key] = (cached_benchmark, cached_info)
+                    if debug_mode:
+                        print(f"  Created and cached benchmark for {dataset_name}")
+                
                 # Build kwargs for run_training
                 training_kwargs = {
                     'benchmark_name': dataset_name,
                     'strategy_name': strategy_name,
                     'model_type': model_name or 'mlp',
                     'device': device,
-                    'experiences': fixed.get('dataset', {}).get('n_experiences', 5),
+                    'experiences': n_experiences,
                     'epochs': fixed.get('training', {}).get('epochs_per_experience', 10),
                     'batch_size': fixed.get('training', {}).get('batch_size', 32),
                     'mem_size': strategy_specific_params.get('mem_size', default_params.get('mem_size', 500)),
                     'lr': fixed.get('training', {}).get('lr', 0.001),
                     'seed': seed,
                     'verbose': debug_mode,
-                    'plugins_config': run_config.get('plugins', None)
+                    'plugins_config': run_config.get('plugins', None),
+                    'benchmark': cached_benchmark,
+                    'benchmark_info': cached_info,
+                    'subset_config': subset_config
                 }
                 
                 # Add any additional strategy-specific parameters

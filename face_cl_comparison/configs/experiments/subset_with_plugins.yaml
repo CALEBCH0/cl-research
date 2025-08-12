@@ -1,0 +1,71 @@
+# Combine controlled subsets with flexible plugins
+name: subset_with_plugins
+description: Test plugin combinations on controlled 50-class subset
+
+comparison:
+  strategies:
+    # Compare base vs enhanced versions
+    - naive
+    
+    - name: naive_replay
+      base: naive
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+    
+    - name: naive_replay_lwf
+      base: naive  
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+        - name: lwf
+          params:
+            alpha: 0.5
+    
+    # Compare different replay policies
+    - name: ewc_replay_balanced
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+            storage_policy: class_balanced
+    
+    - name: ewc_replay_experience
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+            storage_policy: experience_balanced
+    
+    - name: ewc_replay_reservoir
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+            storage_policy: reservoir
+
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1
+      pretrained: true
+    
+  dataset:
+    name: lfw
+    subset:  # NEW: Controlled subset
+      target_classes: 50
+      min_samples_per_class: 20
+      selection_strategy: most_samples
+    n_experiences: 10
+    
+  training:
+    epochs_per_experience: 10
+    batch_size: 32
+    lr: 0.001
+    debug: false
+    seeds: [42, 123, 456]

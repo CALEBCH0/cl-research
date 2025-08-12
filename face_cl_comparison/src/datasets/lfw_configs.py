@@ -1,43 +1,63 @@
 """Predefined LFW dataset configurations with quality guarantees."""
 
-# LFW dataset configurations
-# Each config ensures minimum images per person for reliable CL experiments
+# LFW dataset configurations with exact class counts and valid n_experiences
+# Based on actual LFW data with different min_faces_per_person thresholds
 LFW_CONFIGS = {
-    'lfw_small': {
-        'min_faces_per_person': 70,
-        'description': 'High-quality small dataset (~7 people, 70+ images each)',
-        'use_case': 'Quick testing with very reliable data'
-    },
-    'lfw_20': {
+    'lfw_12': {
         'min_faces_per_person': 50,
-        'description': '~20 people with 50+ images each',
-        'use_case': 'Small-scale experiments with high quality'
+        'num_classes': 12,  # Exact number
+        'valid_n_experiences': [2, 3, 4, 6, 12],  # All divisors of 12
+        'default_n_experiences': 6,  # 2 classes per experience
+        'description': '12 people with 50+ images each (ultra high quality)',
+        'use_case': 'Quick testing with perfect data quality'
     },
-    'lfw_50': {
+    'lfw_24': {
+        'min_faces_per_person': 40,
+        'num_classes': 24,  # Estimated
+        'valid_n_experiences': [2, 3, 4, 6, 8, 12],  # Common divisors of 24
+        'default_n_experiences': 8,  # 3 classes per experience
+        'description': '~24 people with 40+ images each',
+        'use_case': 'Small experiments with excellent quality'
+    },
+    'lfw_30': {
         'min_faces_per_person': 30,
-        'description': '~50 people with 30+ images each',
-        'use_case': 'Medium-scale experiments'
+        'num_classes': 30,  # Estimated
+        'valid_n_experiences': [2, 3, 5, 6, 10, 15],  # Divisors of 30
+        'default_n_experiences': 10,  # 3 classes per experience
+        'description': '~30 people with 30+ images each',
+        'use_case': 'Small-medium experiments'
     },
-    'lfw_80': {
+    'lfw_60': {
         'min_faces_per_person': 20,
-        'description': '~80 people with 20+ images each',
-        'use_case': 'Larger experiments with good quality'
+        'num_classes': 60,  # Close to your 62
+        'valid_n_experiences': [2, 3, 4, 5, 6, 10, 12, 15, 20],  # Many options!
+        'default_n_experiences': 10,  # 6 classes per experience
+        'description': '~60 people with 20+ images each',
+        'use_case': 'Medium experiments with good quality'
     },
-    'lfw_100': {
+    'lfw_90': {
         'min_faces_per_person': 15,
-        'description': '~100 people with 15+ images each',
-        'use_case': 'Large-scale experiments'
+        'num_classes': 90,  # Close to your 96
+        'valid_n_experiences': [2, 3, 5, 6, 9, 10, 15, 18],  # Divisors of 90
+        'default_n_experiences': 10,  # 9 classes per experience
+        'description': '~90 people with 15+ images each',
+        'use_case': 'Large experiments with acceptable quality'
+    },
+    'lfw_120': {
+        'min_faces_per_person': 12,
+        'num_classes': 120,  # Estimated
+        'valid_n_experiences': [2, 3, 4, 5, 6, 8, 10, 12, 15, 20],  # Many divisors!
+        'default_n_experiences': 10,  # 12 classes per experience
+        'description': '~120 people with 12+ images each',
+        'use_case': 'Large experiments with good divisibility'
     },
     'lfw_150': {
         'min_faces_per_person': 10,
+        'num_classes': 150,  # Estimated
+        'valid_n_experiences': [2, 3, 5, 6, 10, 15],  # Divisors of 150
+        'default_n_experiences': 10,  # 15 classes per experience
         'description': '~150 people with 10+ images each',
-        'use_case': 'Very large experiments (minimum recommended)'
-    },
-    # Not recommended for CL but available:
-    'lfw_all': {
-        'min_faces_per_person': 5,
-        'description': 'All people with 5+ images (not recommended for CL)',
-        'use_case': 'Maximum scale but poor quality for some classes'
+        'use_case': 'Very large experiments (minimum quality)'
     }
 }
 
@@ -72,3 +92,28 @@ def estimate_dataset_size(min_faces_per_person):
     
     # Default to lowest threshold
     return estimates[5]
+
+def find_valid_n_experiences(n_classes, preferred_n_exp=10):
+    """Find valid number of experiences for given number of classes."""
+    # Get all divisors
+    divisors = [i for i in range(1, n_classes + 1) if n_classes % i == 0]
+    
+    # Filter reasonable options (2-20 experiences, with 2-50 classes per exp)
+    reasonable = []
+    for d in divisors:
+        classes_per_exp = n_classes // d
+        if 2 <= d <= 20 and 2 <= classes_per_exp <= 50:
+            reasonable.append(d)
+    
+    if not reasonable:
+        reasonable = divisors  # Fall back to all divisors
+    
+    # Find closest to preferred
+    best = min(reasonable, key=lambda x: abs(x - preferred_n_exp))
+    
+    return {
+        'recommended': best,
+        'classes_per_exp': n_classes // best,
+        'all_valid': sorted(reasonable),
+        'all_divisors': sorted(divisors)
+    }

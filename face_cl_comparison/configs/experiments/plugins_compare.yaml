@@ -1,0 +1,93 @@
+# Showcase the flexible plugin system
+name: plugins_showcase
+description: Demonstrate how to combine strategies with multiple plugins
+
+comparison:
+  strategies:
+    # 1. Basic strategies without plugins
+    - naive
+    - ewc
+    
+    # 2. Strategy with single plugin
+    - name: ewc_replay
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+            storage_policy: class_balanced
+    
+    # 3. Strategy with multiple plugins
+    - name: ewc_replay_lwf
+      base: ewc
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+        - name: lwf
+          params:
+            alpha: 0.5
+            temperature: 2.0
+    
+    # 4. Kitchen sink - many plugins
+    - name: naive_multi_plugin
+      base: naive
+      plugins:
+        - name: replay
+          params:
+            mem_size: 1000
+            storage_policy: experience_balanced
+        - name: ewc
+          params:
+            ewc_lambda: 0.4
+            mode: online
+        - name: lwf
+          params:
+            alpha: 0.3
+        - name: lr_scheduler
+          params:
+            scheduler_type: cosine
+            T_max: 100
+    
+    # 5. NCM strategies with plugins (note: some may warn)
+    - name: slda_replay
+      base: slda
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
+            # SLDA may warn about replay but still works
+    
+    # 6. Strategy with specific parameters AND plugins
+    - name: gem_with_extras
+      base: gem
+      params:  # Strategy-specific params
+        patterns_per_exp: 100
+        memory_strength: 0.5
+      plugins:  # Additional plugins
+        - name: lr_scheduler
+          params:
+            scheduler_type: step
+            step_size: 5
+            gamma: 0.9
+
+fixed:
+  model:
+    backbone:
+      name: efficientnet_b1
+      pretrained: true
+    
+  dataset:
+    name: lfw
+    subset:
+      target_classes: 50
+      min_samples_per_class: 20
+      selection_strategy: most_samples
+    n_experiences: 10
+    
+  training:
+    epochs_per_experience: 10
+    batch_size: 32
+    lr: 0.001
+    debug: false
+    seeds: [42, 123]  # Just 2 seeds for faster demo

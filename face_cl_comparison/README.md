@@ -47,6 +47,31 @@ python runner.py --exp NCM_SLDA_iCaRL
 
 ## Available Datasets
 
+### NEW: Controlled Dataset Subsets (Phase 1)
+
+Create controlled subsets with exact class counts:
+
+```yaml
+dataset:
+  name: lfw
+  subset:
+    target_classes: 50          # Exactly 50 classes
+    min_samples_per_class: 15   # Quality threshold
+    selection_strategy: most_samples  # How to select classes
+  n_experiences: 10
+```
+
+**Benefits**:
+- **Exact control**: Get exactly the number of classes you request
+- **Quality guaranteed**: Never go below minimum samples threshold
+- **Fair comparison**: Compare methods on identical subsets
+- **Dataset-agnostic**: Same config works for any dataset (coming soon)
+
+**Selection strategies**:
+- `most_samples`: Select classes with most samples (recommended)
+- `balanced`: Select classes with similar sample counts
+- `random`: Random selection
+
 ### Standard Datasets
 | Dataset | Identities | Images/Person | Total Images | Use Case |
 |---------|------------|---------------|--------------|----------|
@@ -55,17 +80,19 @@ python runner.py --exp NCM_SLDA_iCaRL
 ### LFW Quality Subsets
 Choose based on your quality vs. scale needs:
 
-| Dataset | Identities | Min Images/Person | Total Images | Quality | Recommended For |
-|---------|------------|-------------------|--------------|---------|-----------------|
-| `lfw_small` | ~7 | 70+ | ~490 | ⭐⭐⭐⭐⭐ | Algorithm debugging, perfect data |
-| `lfw_20` | ~20 | 50+ | ~1,000 | ⭐⭐⭐⭐⭐ | High-quality small experiments |
-| `lfw_50` | ~50 | 30+ | ~1,500 | ⭐⭐⭐⭐ | Balanced quality/scale |
-| `lfw_80` | ~80 | 20+ | ~1,600 | ⭐⭐⭐⭐ | **Default choice** - good for most CL |
-| `lfw_100` | ~100 | 15+ | ~1,500 | ⭐⭐⭐ | Large-scale with acceptable quality |
-| `lfw_150` | ~150 | 10+ | ~1,500 | ⭐⭐ | Maximum recommended for CL |
-| `lfw_all` | ~400 | 5+ | ~2,000 | ⭐ | Not recommended - too few samples |
+| Dataset | Classes | Min Imgs/Person | Valid n_experiences | Quality | Recommended For |
+|---------|---------|-----------------|---------------------|---------|-----------------|
+| `lfw_12` | 12 | 50+ | 2, 3, 4, 6, 12 | ⭐⭐⭐⭐⭐ | Algorithm debugging, perfect data |
+| `lfw_24` | 24 | 40+ | 2, 3, 4, 6, 8, 12 | ⭐⭐⭐⭐⭐ | Small experiments with many exp options |
+| `lfw_30` | 30 | 30+ | 2, 3, 5, 6, 10, 15 | ⭐⭐⭐⭐ | Small-medium experiments |
+| `lfw_60` | 60 | 20+ | 2, 3, 4, 5, 6, 10, 12, 15, 20 | ⭐⭐⭐⭐ | **Default** - great flexibility |
+| `lfw_90` | 90 | 15+ | 2, 3, 5, 6, 9, 10, 15, 18 | ⭐⭐⭐ | Large experiments |
+| `lfw_120` | 120 | 12+ | 2, 3, 4, 5, 6, 8, 10, 12, 15, 20 | ⭐⭐⭐ | Very large with many divisors |
+| `lfw_150` | 150 | 10+ | 2, 3, 5, 6, 10, 15 | ⭐⭐ | Maximum scale (minimum quality) |
 
 **Rule of thumb**: For continual learning, use at least 10 images per person (15+ preferred).
+
+**Choosing n_experiences**: Each dataset has specific valid n_experiences values listed above. If you request an invalid number, it will automatically use the default value for that dataset.
 
 **Note**: LFW dataset will be automatically downloaded on first use (~200MB). It's cached locally after the first download, so subsequent runs will be much faster. The cache location is typically:
 - macOS: `~/scikit_learn_data/lfw_home/`

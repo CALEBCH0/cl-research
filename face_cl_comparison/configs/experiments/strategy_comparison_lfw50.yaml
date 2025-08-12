@@ -1,0 +1,45 @@
+# Compare different strategies on fixed 50-class dataset
+name: strategy_comparison_lfw50
+description: Which strategy works best on 50 face classes?
+
+comparison:
+  # Vary only strategy
+  vary:
+    strategy.name:
+      - naive      # Baseline
+      - replay     # Simple replay
+      - ewc        # Regularization
+      - slda       # NCM-based
+      - icarl      # NCM + exemplars
+      - gem        # Gradient constraints
+      - agem       # Averaged GEM
+
+fixed:
+  # Fix dataset and model
+  model:
+    backbone:
+      name: efficientnet_b1
+      pretrained: true
+    
+  dataset:
+    name: lfw
+    # Use controlled subset for fair comparison
+    subset:
+      target_classes: 50
+      min_samples_per_class: 20
+      selection_strategy: most_samples
+    n_experiences: 10  # 5 classes per experience
+    
+  training:
+    epochs_per_experience: 10
+    batch_size: 32
+    lr: 0.001
+    debug: false
+    seeds: [42, 123, 456]
+    
+  strategy:
+    params:
+      # Common parameters
+      mem_size: 500
+      ewc_lambda: 0.4
+      patterns_per_exp: 50  # For GEM/AGEM

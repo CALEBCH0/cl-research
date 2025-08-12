@@ -38,8 +38,8 @@ fixed:
       pretrained: true
     
   dataset:
-    name: lfw_80   # LFW with ~80 identities, 20+ images each
-    n_experiences: 8  # 10 identities per experience
+    name: lfw_60   # LFW with 60 identities, 20+ images each
+    n_experiences: 10  # 6 identities per experience
     
   training:
     epochs_per_experience: 10

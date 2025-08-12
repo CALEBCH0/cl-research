@@ -40,7 +40,12 @@ except ImportError:
 BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
 
 
-def set_benchmark(benchmark_name, experiences=5, seed=42):
+def create_benchmark(benchmark_name, experiences=5, seed=42, subset_config=None):
+    """Create benchmark separately for caching purposes."""
+    return set_benchmark(benchmark_name, experiences, seed, subset_config)
+
+
+def set_benchmark(benchmark_name, experiences=5, seed=42, subset_config=None):
     """Set the appropriate benchmark."""
     
     if benchmark_name == 'mnist':
@@ -131,18 +136,50 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         channels = 1
     elif benchmark_name.startswith('lfw'):
         # LFW (Labeled Faces in the Wild) dataset
-        from src.datasets.lfw import create_lfw_benchmark, create_lfw_subset_benchmark
+        from src.datasets.lfw import create_lfw_benchmark, create_lfw_subset_benchmark, create_lfw_controlled_benchmark
         from src.datasets.lfw_configs import get_lfw_config, LFW_CONFIGS
+        from src.datasets.subset_utils import DatasetSubsetConfig
         
-        # Check if it's a predefined config
-        if benchmark_name in LFW_CONFIGS:
-            config = get_lfw_config(benchmark_name)
-            benchmark, dataset_info = create_lfw_benchmark(
+        # Check if subset_config is provided (new way)
+        if subset_config and isinstance(subset_config, dict):
+            # Create DatasetSubsetConfig from dict
+            config_obj = DatasetSubsetConfig(
+                target_classes=subset_config['target_classes'],
+                min_samples_per_class=subset_config.get('min_samples_per_class', 10),
                 n_experiences=experiences,
-                min_faces_per_person=config['min_faces_per_person'],
-                image_size=(64, 64),
+                selection_strategy=subset_config.get('selection_strategy', 'most_samples'),
                 seed=seed
             )
+            benchmark, dataset_info = create_lfw_controlled_benchmark(
+                config_obj,
+                image_size=(64, 64)
+            )
+        # Check if it's a predefined config (old way)
+        elif benchmark_name in LFW_CONFIGS:
+            config = get_lfw_config(benchmark_name)
+            
+            # Use the exact number of classes if specified
+            if 'num_classes' in config:
+                # Create subset with exact number of classes
+                benchmark, dataset_info = create_lfw_subset_benchmark(
+                    n_identities=config['num_classes'],
+                    n_experiences=experiences if experiences in config['valid_n_experiences'] else config['default_n_experiences'],
+                    min_faces_per_person=config['min_faces_per_person'],
+                    image_size=(64, 64),
+                    seed=seed
+                )
+                if experiences not in config['valid_n_experiences']:
+                    print(f"\nNote: {experiences} experiences not valid for {benchmark_name} ({config['num_classes']} classes)")
+                    print(f"Valid options: {config['valid_n_experiences']}")
+                    print(f"Using default: {config['default_n_experiences']} experiences")
+            else:
+                # Fallback to old method
+                benchmark, dataset_info = create_lfw_benchmark(
+                    n_experiences=experiences,
+                    min_faces_per_person=config['min_faces_per_person'],
+                    image_size=(64, 64),
+                    seed=seed
+                )
             print(f"\nUsing {benchmark_name}: {config['description']}")
         
         # Legacy number-based names (deprecated but still supported)
@@ -195,6 +232,8 @@ def set_benchmark(benchmark_name, experiences=5, seed=42):
         print(f"  Classes: {num_classes}")
         print(f"  Train samples: {dataset_info['num_train_samples']}")
         print(f"  Test samples: {dataset_info['num_test_samples']}")
+        if 'n_experiences' in dataset_info:
+            print(f"  Experiences: {dataset_info['n_experiences']} (classes per exp: {dataset_info['classes_per_exp']})")
     else:
         raise ValueError(f"Unknown benchmark: {benchmark_name}")
     
@@ -638,7 +677,8 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
 def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp',
                 device='cuda', experiences=5, epochs=1, batch_size=32, 
                 mem_size=200, lr=0.001, seed=42, verbose=True, 
-                plugins_config=None, **kwargs):
+                plugins_config=None, benchmark=None, benchmark_info=None,
+                subset_config=None, **kwargs):
     """
     Run a complete training experiment and return results.
     
@@ -654,7 +694,14 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    # Create benchmark
+    # Create benchmark if not provided (for caching)
+    if benchmark is None or benchmark_info is None:
+        if verbose:
+            print(f"\n=== Creating benchmark ===")
+            print(f"Dataset: {benchmark_name}")
+            print(f"Experiences: {experiences}")
+        benchmark, benchmark_info = set_benchmark(benchmark_name, experiences, seed, subset_config)
+    
     if verbose:
         print(f"\n=== Running training ===")
         print(f"Dataset: {benchmark_name}")
@@ -662,8 +709,6 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
         print(f"Model: {model_type}")
         print(f"Experiences: {experiences}")
         print(f"Seed: {seed}")
-    
-    benchmark, benchmark_info = set_benchmark(benchmark_name, experiences, seed)
     
     # Create model
     model = create_model(model_type, benchmark_info)

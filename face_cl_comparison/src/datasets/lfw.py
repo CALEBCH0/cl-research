@@ -6,6 +6,7 @@ from sklearn.datasets import fetch_lfw_people
 from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
 from pathlib import Path
+from src.datasets.subset_utils import DatasetSubsetConfig, create_cl_benchmark_from_subset
 
 
 def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20, 
@@ -23,7 +24,7 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
         benchmark: Avalanche benchmark
         dataset_info: Dict with dataset information
     """
-    print(f"Loading LFW dataset (min {min_faces_per_person} faces per person)...")
+    print(f"\nLoading LFW dataset (min {min_faces_per_person} faces per person)...")
     
     # Get sklearn data home directory
     from sklearn.datasets import get_data_home
@@ -116,11 +117,21 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
     train_dataset = as_classification_dataset(train_dataset)
     test_dataset = as_classification_dataset(test_dataset)
     
+    # Adjust n_experiences to be a valid divisor of n_classes
+    valid_n_experiences = n_experiences
+    if n_classes % n_experiences != 0:
+        # Find the closest valid divisor
+        divisors = [i for i in range(1, n_classes + 1) if n_classes % i == 0]
+        # Find divisor closest to requested n_experiences
+        valid_n_experiences = min(divisors, key=lambda x: abs(x - n_experiences))
+        print(f"Warning: {n_classes} classes cannot be evenly split into {n_experiences} experiences.")
+        print(f"Using closest valid n_experiences instead: {valid_n_experiences}")
+    
     # Create CL benchmark
     benchmark = nc_benchmark(
         train_dataset=train_dataset,
         test_dataset=test_dataset,
-        n_experiences=n_experiences,
+        n_experiences=valid_n_experiences,
         task_labels=False,
         seed=seed,
         class_ids_from_zero_in_each_exp=False  # Use global class IDs
@@ -132,7 +143,9 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
         'num_train_samples': len(train_indices),
         'num_test_samples': len(test_indices),
         'image_shape': (1, image_size[0], image_size[1]),  # (C, H, W)
-        'people_names': lfw_people.target_names.tolist()
+        'people_names': lfw_people.target_names.tolist(),
+        'n_experiences': valid_n_experiences,  # Actual number of experiences used
+        'classes_per_exp': n_classes // valid_n_experiences
     }
     
     return benchmark, dataset_info
@@ -207,11 +220,21 @@ def create_lfw_subset_benchmark(n_identities=100, n_experiences=10,
     train_subset = as_classification_dataset(train_subset)
     test_subset = as_classification_dataset(test_subset)
     
+    # Adjust n_experiences to be a valid divisor of n_identities
+    valid_n_experiences = n_experiences
+    if n_identities % n_experiences != 0:
+        # Find the closest valid divisor
+        divisors = [i for i in range(1, n_identities + 1) if n_identities % i == 0]
+        # Find divisor closest to requested n_experiences
+        valid_n_experiences = min(divisors, key=lambda x: abs(x - n_experiences))
+        print(f"Warning: {n_identities} classes cannot be evenly split into {n_experiences} experiences.")
+        print(f"Using closest valid n_experiences instead: {valid_n_experiences}")
+    
     # Create benchmark with subset
     benchmark = nc_benchmark(
         train_dataset=train_subset,
         test_dataset=test_subset,
-        n_experiences=n_experiences,
+        n_experiences=valid_n_experiences,
         task_labels=False,
         seed=seed,
         class_ids_from_zero_in_each_exp=False
@@ -223,7 +246,123 @@ def create_lfw_subset_benchmark(n_identities=100, n_experiences=10,
         'num_train_samples': len(train_indices),
         'num_test_samples': len(test_indices),
         'image_shape': (1, image_size[0], image_size[1]),
-        'selected_people': [info_full['people_names'][i] for i in selected_classes]
+        'selected_people': [info_full['people_names'][i] for i in selected_classes],
+        'n_experiences': valid_n_experiences,
+        'classes_per_exp': n_identities // valid_n_experiences
     }
+    
+    return benchmark, dataset_info
+
+
+def create_lfw_controlled_benchmark(
+    subset_config: DatasetSubsetConfig,
+    image_size=(64, 64),
+    test_split=0.2
+):
+    """
+    Create LFW benchmark with controlled subset using DatasetSubsetConfig.
+    
+    This is the new preferred way to create LFW benchmarks with specific
+    number of classes and quality guarantees.
+    
+    Args:
+        subset_config: Configuration for subset creation
+        image_size: Target size for images (height, width)
+        test_split: Fraction of data for test set
+        
+    Returns:
+        benchmark: Avalanche benchmark
+        dataset_info: Dict with dataset information
+    """
+    print(f"\nCreating controlled LFW benchmark:")
+    print(f"  Target classes: {subset_config.target_classes}")
+    print(f"  Min samples per class: {subset_config.min_samples_per_class}")
+    print(f"  Selection strategy: {subset_config.selection_strategy}")
+    
+    # Load LFW data with quality threshold
+    from sklearn.datasets import get_data_home
+    data_home = get_data_home()
+    lfw_home = Path(data_home) / 'lfw_home'
+    
+    if not lfw_home.exists():
+        print(f"First time loading LFW - downloading dataset (~200MB)...")
+        print(f"Dataset will be cached in: {lfw_home}")
+    else:
+        print(f"Using cached LFW dataset from: {lfw_home}")
+    
+    print("Fetching LFW data...")
+    lfw_people = fetch_lfw_people(
+        min_faces_per_person=subset_config.min_samples_per_class,
+        resize=None,  # We'll resize ourselves
+        color=False,
+        funneled=True,
+        download_if_missing=True,
+        return_X_y=False
+    )
+    
+    # Get data
+    X = lfw_people.images  # Shape: (n_samples, height, width)
+    y = lfw_people.target  # Shape: (n_samples,)
+    class_names = lfw_people.target_names
+    
+    print(f"Loaded {len(X)} images of {len(class_names)} people")
+    
+    # Add channel dimension and normalize
+    X = torch.FloatTensor(X).unsqueeze(1)  # Add channel dimension
+    X = X / 255.0
+    
+    # Resize if needed
+    import torch.nn.functional as F
+    X = F.interpolate(X, size=image_size, mode='bilinear', align_corners=False)
+    
+    # Convert labels to torch
+    y = torch.LongTensor(y)
+    
+    # Split into train/test maintaining class balance
+    train_indices = []
+    test_indices = []
+    
+    for class_id in range(len(class_names)):
+        class_indices = torch.where(y == class_id)[0].numpy()
+        n_class_samples = len(class_indices)
+        
+        # Shuffle indices for this class
+        rng = np.random.RandomState(subset_config.seed + class_id)
+        rng.shuffle(class_indices)
+        
+        # Split
+        n_train = int((1 - test_split) * n_class_samples)
+        train_indices.extend(class_indices[:n_train])
+        test_indices.extend(class_indices[n_train:])
+    
+    # Create train/test tensors
+    train_indices = torch.tensor(train_indices)
+    test_indices = torch.tensor(test_indices)
+    
+    X_train = X[train_indices]
+    y_train = y[train_indices]
+    X_test = X[test_indices]
+    y_test = y[test_indices]
+    
+    # Create controlled benchmark using subset utils
+    benchmark, dataset_info = create_cl_benchmark_from_subset(
+        X_train, y_train,
+        X_test, y_test,
+        subset_config,
+        class_names=class_names.tolist()
+    )
+    
+    # Add LFW-specific info
+    dataset_info['dataset_name'] = 'lfw'
+    dataset_info['image_shape'] = (1, image_size[0], image_size[1])
+    dataset_info['original_num_classes'] = len(class_names)
+    
+    print(f"\nCreated benchmark with:")
+    print(f"  Classes: {dataset_info['num_classes']} "
+          f"(selected from {dataset_info['original_num_classes']})")
+    print(f"  Experiences: {dataset_info['n_experiences']} "
+          f"({dataset_info['classes_per_exp']} classes per exp)")
+    print(f"  Train samples: {dataset_info['num_train_samples']}")
+    print(f"  Test samples: {dataset_info['num_test_samples']}")
     
     return benchmark, dataset_info
