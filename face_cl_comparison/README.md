@@ -182,7 +182,82 @@ comparison:
 
 ## Configuration
 
-### Basic Configuration Structure
+### NEW: Modular Configuration Format (Recommended)
+
+The modular format allows you to define custom datasets, models, and strategies inline:
+
+```yaml
+name: modular_experiment
+description: "Modular config with inline definitions"
+
+vary:
+  # Define datasets - mix predefined and custom
+  dataset:
+    - name: olivetti  # Predefined dataset
+    
+    - name: lfw_custom_20  # Custom inline definition
+      type: lfw
+      params:
+        target_classes: 20
+        min_samples_per_class: 50
+        selection_strategy: most_samples
+        
+  # Define models with configurations
+  model:
+    - name: eff_b0_pretrained
+      type: efficientnet_b0
+      params:
+        pretrained: true
+        
+    - name: resnet18_frozen
+      type: resnet18
+      params:
+        pretrained: true
+        freeze_backbone: true
+        
+  # Define strategies with parameters
+  strategy:
+    - name: naive  # Simple predefined
+    
+    - name: slda_tuned
+      type: slda
+      params:
+        shrinkage_param: 0.01
+        streaming_update_sigma: false
+        
+    - name: replay_with_plugins
+      type: replay
+      params:
+        mem_size: 500
+      plugins:
+        - name: lwf
+          params:
+            alpha: 0.5
+
+fixed:
+  dataset:
+    n_experiences: 10
+    test_split: 0.2
+    image_size: [64, 64]
+    
+  training:
+    epochs_per_experience: 1
+    batch_size: 32
+    lr: 0.001
+    debug: true  # Single seed for testing
+```
+
+**Benefits of Modular Format:**
+- **Self-contained**: All configuration in one place
+- **Flexible**: Mix predefined and custom definitions
+- **Readable**: Clear names for each configuration
+- **Reusable**: Share custom definitions across experiments
+
+See `configs/experiments/modular_config_example.yaml` and `configs/experiments/modular_simple_example.yaml` for complete examples.
+
+### Classic Configuration Format
+
+For simpler experiments or backward compatibility:
 
 ```yaml
 name: experiment_name

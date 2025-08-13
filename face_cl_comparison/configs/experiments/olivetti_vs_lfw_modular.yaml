@@ -1,0 +1,54 @@
+# Modular version of olivetti_vs_lfw comparison
+name: olivetti_vs_lfw_modular
+description: Compare SLDA on Olivetti vs custom LFW subsets using modular config
+
+vary:
+  dataset:
+    # Predefined Olivetti dataset
+    - name: olivetti
+    
+    # Custom LFW with 40 classes (matching Olivetti)
+    - name: lfw_40_balanced
+      type: lfw
+      params:
+        target_classes: 40
+        min_samples_per_class: 20
+        selection_strategy: most_samples
+        
+    # Harder LFW with more classes but fewer samples per class
+    - name: lfw_80_sparse
+      type: lfw
+      params:
+        target_classes: 80
+        min_samples_per_class: 15
+        selection_strategy: random
+
+fixed:
+  model:
+    name: efficientnet_b1
+    type: efficientnet_b1
+    params:
+      pretrained: true
+      
+  strategy:
+    name: slda
+    type: slda
+    params:
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+  dataset:
+    n_experiences: 8  # 5 classes per experience for Olivetti, 10 for LFW-80
+    test_split: 0.2
+    image_size: [64, 64]
+    
+  training:
+    epochs_per_experience: 1
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  experiment:
+    seeds: [42, 123, 456]  # Multiple seeds for robust evaluation
+    device: cuda
+    save_checkpoints: false

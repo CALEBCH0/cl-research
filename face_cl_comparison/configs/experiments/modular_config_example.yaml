@@ -1,0 +1,141 @@
+# Modular Configuration Example
+# This shows how to define custom datasets, models, and strategies inline
+name: modular_benchmark
+description: Comprehensive benchmark using modular config format
+
+vary:
+  # Dataset configurations - mix predefined and custom
+  dataset:
+    # Predefined dataset - just use string
+    - name: olivetti
+    
+    # Custom LFW subsets with inline parameters
+    - name: lfw_easy_20
+      type: lfw
+      params:
+        target_classes: 20
+        min_samples_per_class: 50  # High quality threshold
+        selection_strategy: most_samples
+        
+    - name: lfw_medium_40
+      type: lfw
+      params:
+        target_classes: 40
+        min_samples_per_class: 30
+        selection_strategy: most_samples
+        
+    - name: lfw_hard_100
+      type: lfw
+      params:
+        target_classes: 100
+        min_samples_per_class: 15
+        selection_strategy: random  # More challenging selection
+  
+  # Model configurations
+  model:
+    # Simple predefined model
+    - name: efficientnet_b0
+      type: efficientnet_b0
+      params:
+        pretrained: true
+        
+    # Model with custom settings
+    - name: efficientnet_b1_frozen
+      type: efficientnet_b1
+      params:
+        pretrained: true
+        freeze_backbone: true  # Only train classifier head
+        
+    - name: resnet18_scratch
+      type: resnet18
+      params:
+        pretrained: false  # Train from scratch
+        
+    - name: mobilenet_custom
+      type: mobilenetv2
+      params:
+        pretrained: true
+        dropout_rate: 0.3  # Custom dropout
+  
+  # Strategy configurations
+  strategy:
+    # Simple predefined strategies
+    - name: naive
+    
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+        
+    - name: slda_aggressive
+      type: slda
+      params:
+        shrinkage_param: 0.1
+        streaming_update_sigma: false
+        
+    - name: replay_small
+      type: replay
+      params:
+        mem_size: 200
+        
+    - name: replay_large
+      type: replay
+      params:
+        mem_size: 1000
+        alpha: 0.5  # Balance parameter
+        
+    - name: ewc_standard
+      type: ewc
+      params:
+        ewc_lambda: 0.4
+        mode: separate
+        
+    - name: icarl_tuned
+      type: icarl
+      params:
+        memory_size: 2000
+        herding: true
+        
+    # Strategy with plugins
+    - name: naive_with_plugins
+      type: naive
+      plugins:
+        - name: replay
+          type: ReplayPlugin
+          params:
+            mem_size: 500
+        - name: early_stop
+          type: EarlyStoppingPlugin
+          params:
+            patience: 5
+            val_stream_name: validation
+
+# Fixed parameters apply to all combinations
+fixed:
+  # Dataset settings (applied to all datasets)
+  dataset:
+    n_experiences: 10
+    test_split: 0.2
+    image_size: [64, 64]
+    seed: 42
+    
+  # Training settings
+  training:
+    epochs_per_experience: 1
+    batch_size: 32
+    optimizer: adam
+    lr: 0.001
+    device: cuda
+    num_workers: 4
+    
+  # Evaluation settings
+  evaluation:
+    eval_every: 1  # Evaluate after each experience
+    metrics: ['accuracy', 'forgetting']
+    
+  # Experiment settings
+  experiment:
+    seeds: [42, 123, 456]  # Run with multiple seeds
+    save_checkpoints: false
+    results_dir: results/modular_benchmark

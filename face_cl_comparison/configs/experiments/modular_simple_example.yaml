@@ -1,0 +1,57 @@
+# Simple Modular Configuration Example
+# Shows basic usage of modular config format
+name: modular_simple_demo
+description: Simple demo comparing datasets with SLDA
+
+vary:
+  # Compare different datasets
+  dataset:
+    # Predefined dataset (just a string)
+    - name: olivetti
+    
+    # Custom LFW subset with inline parameters
+    - name: lfw_easy
+      type: lfw
+      params:
+        target_classes: 20
+        min_samples_per_class: 50
+        selection_strategy: most_samples
+        
+    - name: lfw_medium
+      type: lfw
+      params:
+        target_classes: 40
+        min_samples_per_class: 30
+        selection_strategy: most_samples
+
+# Fixed parameters for all runs
+fixed:
+  # Model configuration
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+      
+  # Strategy configuration  
+  strategy:
+    name: slda
+    type: slda
+    params:
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+  # Dataset settings
+  dataset:
+    n_experiences: 10
+    test_split: 0.2
+    image_size: [64, 64]
+    seed: 42
+    
+  # Training settings
+  training:
+    epochs_per_experience: 1
+    batch_size: 32
+    lr: 0.001
+    debug: true  # Single seed for testing
+    seed: 42

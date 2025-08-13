@@ -41,6 +41,12 @@ def parse_config(config_path):
 
 def generate_runs(config):
     """Generate run configurations from comparison config."""
+    # Check for modular config format
+    if 'vary' in config and 'fixed' in config:
+        # New modular format
+        from src.utils.modular_config import expand_modular_config
+        return expand_modular_config(config)
+    
     runs = []
     
     # Check for new strategies format
@@ -258,22 +264,41 @@ def main():
                 fixed = config.get('fixed', {})
                 strategy_config = fixed.get('strategy', {})
                 
-                # Get model name from fixed config if not in run_config
-                model_name = run_config.get('model')
-                if not model_name and 'model' in fixed:
-                    model_name = fixed['model'].get('backbone', {}).get('name', 'mlp')
+                # Handle modular configs
+                is_modular = 'vary' in config and 'fixed' in config
                 
-                # Get dataset name from run_config first, then fixed config
-                dataset_name = run_config.get('dataset')
-                if not dataset_name:
-                    dataset_name = fixed.get('dataset', {}).get('name', 'mnist')
-                if dataset_name == 'splitmnist':
-                    dataset_name = 'mnist'
-                
-                # Get strategy name from run_config or fixed config
-                strategy_name = run_config.get('strategy')
-                if not strategy_name and 'strategy' in fixed:
-                    strategy_name = fixed['strategy'].get('name', 'naive')
+                if is_modular:
+                    # Modular format - configs are dicts with name, type, params
+                    dataset_config = run_config.get('dataset', {})
+                    model_config = run_config.get('model', {})
+                    strategy_config = run_config.get('strategy', {})
+                    
+                    dataset_name = dataset_config.get('name', 'mnist')
+                    model_name = model_config.get('name', 'mlp')
+                    strategy_name = strategy_config.get('name', 'naive')
+                    
+                    # Store full configs for later use
+                    run_config['dataset_config'] = dataset_config
+                    run_config['model_config'] = model_config
+                    run_config['strategy_config'] = strategy_config
+                else:
+                    # Original format
+                    # Get model name from fixed config if not in run_config
+                    model_name = run_config.get('model')
+                    if not model_name and 'model' in fixed:
+                        model_name = fixed['model'].get('backbone', {}).get('name', 'mlp')
+                    
+                    # Get dataset name from run_config first, then fixed config
+                    dataset_name = run_config.get('dataset')
+                    if not dataset_name:
+                        dataset_name = fixed.get('dataset', {}).get('name', 'mnist')
+                    if dataset_name == 'splitmnist':
+                        dataset_name = 'mnist'
+                    
+                    # Get strategy name from run_config or fixed config
+                    strategy_name = run_config.get('strategy')
+                    if not strategy_name and 'strategy' in fixed:
+                        strategy_name = fixed['strategy'].get('name', 'naive')
                 
                 # Merge strategy-specific params with defaults
                 strategy_specific_params = run_config.get('strategy_params', {})
@@ -285,27 +310,62 @@ def main():
                 # Get or create benchmark (with caching)
                 n_experiences = fixed.get('dataset', {}).get('n_experiences', 5)
                 
-                # Include subset config in cache key if present
-                if subset_config:
-                    cache_key = (dataset_name, n_experiences, 
-                                frozenset(subset_config.items()) if subset_config else None)
-                else:
-                    cache_key = (dataset_name, n_experiences)
-                
-                if cache_key in benchmark_cache:
-                    # Reuse cached benchmark
-                    cached_benchmark, cached_info = benchmark_cache[cache_key]
-                    if debug_mode and seed_idx == 0:
-                        print(f"  Using cached benchmark for {dataset_name}")
-                else:
-                    # Create and cache benchmark
-                    from src.training import create_benchmark
-                    cached_benchmark, cached_info = create_benchmark(
-                        dataset_name, n_experiences, seed, subset_config
+                if is_modular and 'dataset_config' in run_config:
+                    # Handle modular dataset creation
+                    dataset_config = run_config['dataset_config']
+                    
+                    # Override n_experiences if specified in params
+                    if 'n_experiences' in dataset_config.get('params', {}):
+                        n_experiences = dataset_config['params']['n_experiences']
+                    
+                    # Create cache key for modular dataset
+                    cache_key = (
+                        dataset_config['name'],
+                        n_experiences,
+                        frozenset(dataset_config.get('params', {}).items())
                     )
-                    benchmark_cache[cache_key] = (cached_benchmark, cached_info)
-                    if debug_mode:
-                        print(f"  Created and cached benchmark for {dataset_name}")
+                    
+                    if cache_key in benchmark_cache:
+                        cached_benchmark, cached_info = benchmark_cache[cache_key]
+                        if debug_mode and seed_idx == 0:
+                            print(f"  Using cached benchmark for {dataset_config['name']}")
+                    else:
+                        # Create modular dataset
+                        from src.utils.modular_config import create_dataset_from_config
+                        
+                        # Merge fixed dataset settings with modular config
+                        full_dataset_config = dataset_config.copy()
+                        for key, value in fixed.get('dataset', {}).items():
+                            if key not in full_dataset_config:
+                                full_dataset_config[key] = value
+                        
+                        cached_benchmark, cached_info = create_dataset_from_config(full_dataset_config)
+                        benchmark_cache[cache_key] = (cached_benchmark, cached_info)
+                        if debug_mode:
+                            print(f"  Created and cached modular benchmark for {dataset_config['name']}")
+                else:
+                    # Original dataset creation
+                    # Include subset config in cache key if present
+                    if subset_config:
+                        cache_key = (dataset_name, n_experiences, 
+                                    frozenset(subset_config.items()) if subset_config else None)
+                    else:
+                        cache_key = (dataset_name, n_experiences)
+                    
+                    if cache_key in benchmark_cache:
+                        # Reuse cached benchmark
+                        cached_benchmark, cached_info = benchmark_cache[cache_key]
+                        if debug_mode and seed_idx == 0:
+                            print(f"  Using cached benchmark for {dataset_name}")
+                    else:
+                        # Create and cache benchmark
+                        from src.training import create_benchmark
+                        cached_benchmark, cached_info = create_benchmark(
+                            dataset_name, n_experiences, seed, subset_config
+                        )
+                        benchmark_cache[cache_key] = (cached_benchmark, cached_info)
+                        if debug_mode:
+                            print(f"  Created and cached benchmark for {dataset_name}")
                 
                 # Build kwargs for run_training
                 training_kwargs = {
@@ -325,6 +385,18 @@ def main():
                     'benchmark_info': cached_info,
                     'subset_config': subset_config
                 }
+                
+                # Add modular configs if present
+                if is_modular:
+                    if 'model_config' in run_config:
+                        training_kwargs['model_config'] = run_config['model_config']
+                    if 'strategy_config' in run_config:
+                        training_kwargs['strategy_config'] = run_config['strategy_config']
+                        # Extract strategy params for compatibility
+                        if 'params' in run_config['strategy_config']:
+                            for key, value in run_config['strategy_config']['params'].items():
+                                if key not in training_kwargs:
+                                    training_kwargs[key] = value
                 
                 # Add any additional strategy-specific parameters
                 # These will be passed as **kwargs to create_strategy

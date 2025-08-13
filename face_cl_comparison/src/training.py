@@ -678,7 +678,7 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
                 device='cuda', experiences=5, epochs=1, batch_size=32, 
                 mem_size=200, lr=0.001, seed=42, verbose=True, 
                 plugins_config=None, benchmark=None, benchmark_info=None,
-                subset_config=None, **kwargs):
+                subset_config=None, model_config=None, strategy_config=None, **kwargs):
     """
     Run a complete training experiment and return results.
     
@@ -711,7 +711,13 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
         print(f"Seed: {seed}")
     
     # Create model
-    model = create_model(model_type, benchmark_info)
+    if model_config:
+        # Use modular config to create model
+        from src.utils.modular_config import create_model_from_config
+        model = create_model_from_config(model_config, benchmark_info.num_classes)
+    else:
+        # Use original model creation
+        model = create_model(model_type, benchmark_info)
     model = model.to(device)
     
     # Create optimizer and criterion
@@ -739,12 +745,26 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     )
     
     # Create strategy
-    strategy = create_strategy(
-        strategy_name, model, optimizer, criterion, device, eval_plugin,
-        mem_size=mem_size, model_type=model_type, benchmark_info=benchmark_info,
-        epochs=epochs, batch_size=batch_size, num_classes=benchmark_info.num_classes,
-        plugins_config=plugins_config
-    )
+    if strategy_config:
+        # Use modular config to create strategy
+        from src.utils.modular_config import create_strategy_from_config
+        strategy = create_strategy_from_config(
+            strategy_config, model, benchmark_info.num_classes, device
+        )
+        # Set optimizer and criterion
+        strategy.optimizer = optimizer
+        strategy.criterion = criterion
+        strategy.evaluator = eval_plugin
+        strategy.train_epochs = epochs
+        strategy.train_mb_size = batch_size
+    else:
+        # Use original strategy creation
+        strategy = create_strategy(
+            strategy_name, model, optimizer, criterion, device, eval_plugin,
+            mem_size=mem_size, model_type=model_type, benchmark_info=benchmark_info,
+            epochs=epochs, batch_size=batch_size, num_classes=benchmark_info.num_classes,
+            plugins_config=plugins_config
+        )
     
     # Training loop
     for i, train_exp in enumerate(benchmark.train_stream):
