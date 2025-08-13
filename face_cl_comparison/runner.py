@@ -224,8 +224,20 @@ def main():
         input_thread.start()
     
     # Check if dataset is fixed across all runs
-    dataset_names = [run.get('dataset', config.get('fixed', {}).get('dataset', {}).get('name', 'mnist')) 
-                     for run in runs]
+    is_modular = 'vary' in config and 'fixed' in config
+    if is_modular:
+        # For modular configs, extract dataset names from dicts
+        dataset_names = []
+        for run in runs:
+            dataset = run.get('dataset', {})
+            if isinstance(dataset, dict):
+                dataset_names.append(dataset.get('name', 'unknown'))
+            else:
+                dataset_names.append(dataset)
+    else:
+        # Original format
+        dataset_names = [run.get('dataset', config.get('fixed', {}).get('dataset', {}).get('name', 'mnist')) 
+                         for run in runs]
     fixed_dataset = len(set(dataset_names)) == 1
     
     # Cache for benchmarks to avoid reloading

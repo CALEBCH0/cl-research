@@ -7,7 +7,7 @@ vary:
   # Compare different datasets
   dataset:
     # Predefined dataset (just a string)
-    - name: olivetti
+    - olivetti
     
     # Custom LFW subset with inline parameters
     - name: lfw_easy

@@ -26,6 +26,16 @@ def process_modular_item(item: Union[str, Dict[str, Any]], item_type: str) -> Di
         }
     
     elif isinstance(item, dict):
+        # Check if it's just a name reference (no type or params)
+        if 'name' in item and 'type' not in item and 'params' not in item:
+            # This is a predefined item in dict format
+            return {
+                'name': item['name'],
+                'type': item['name'],
+                'params': {},
+                'is_predefined': True
+            }
+        
         # Custom definition
         result = {
             'name': item.get('name', f'custom_{item_type}'),
@@ -108,8 +118,9 @@ def expand_modular_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 current[parts[-1]] = value
                 name_parts.append(f"{parts[-1]}={value}")
         
-        # Set run name
-        run_config['run_name'] = "_".join(name_parts)
+        # Set run name (use 'name' for compatibility with runner)
+        run_config['name'] = "_".join(name_parts)
+        run_config['run_name'] = run_config['name']  # Keep both for compatibility
         
         # Add experiment metadata
         run_config['experiment_name'] = config.get('name', 'unnamed')
