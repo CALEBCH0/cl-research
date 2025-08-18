@@ -1,0 +1,65 @@
+# Example: Compare different strategies using a custom backbone model
+name: strategies_on_dwseesaw
+description: Compare CL strategies using DWSeesawFaceV2 backbone
+
+vary:
+  # Compare different strategies (only ONE component type in vary)
+  strategy:
+    - name: naive
+    
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+        
+    - name: icarl
+      type: icarl
+      params:
+        memory_size: 2000
+        
+    - name: replay_small
+      type: replay
+      params:
+        mem_size: 200
+        
+    - name: replay_large
+      type: replay
+      params:
+        mem_size: 1000
+
+fixed:
+  # ALL THREE components must be specified in fixed
+  
+  # Fixed model configuration
+  model:
+    name: dwseesaw_512
+    type: dwseesawfacev2
+    params:
+      embedding_size: 512
+  
+  # Fixed strategy (required even though we're varying strategies)
+  # This provides default/base configuration
+  strategy:
+    name: naive  # Default/placeholder
+    
+  # Fixed dataset configuration  
+  dataset:
+    name: lfw_60
+    type: lfw_60  # Explicit type
+    params: {}    # Empty params
+    n_experiences: 10
+    test_split: 0.2
+    # Image size will be auto-adjusted based on model requirements
+    
+  # Training configuration
+  training:
+    epochs_per_experience: 5
+    batch_size: 32
+    lr: 0.001
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed for testing
+    device: cuda
+    save_checkpoints: false

@@ -2,23 +2,25 @@ name: SLDA_iCaRL_Replay_lfw
 description: SLDA, iCaRL, and Replay on LFW dataset
 
 vary:
-  # Strategy configurations
+  # Strategy configurations (minimal dict format)
   strategy:
-    - slda
-    - icarl
-    - replay
+    - name: slda
+    - name: icarl
+    - name: replay
   
 fixed:
-  # Model configurations
+  # Model configuration (minimal dict for predefined)
   model:
-    name: efficientnet_b0  # Using EfficientNet B0 as backbone
+    name: efficientnet_b0
 
+  # Dataset configuration
   dataset:
-    name: lfw  # Using LFW dataset
-    n_experiences: 10  # Number of experiences for LFW
+    name: lfw
+    n_experiences: 10
 
   training:
-    epochs_per_experience: 5  # More epochs for better performance
+    epochs_per_experience: 5
+    batch_size: 32
+    lr: 0.001
     debug: false
-    seed: 42
-    seeds: [42, 123, 456]  # Multiple seeds for robustness
+    seeds: [42, 123, 456]

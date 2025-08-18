@@ -1,0 +1,60 @@
+# Modular Configuration Template
+# 
+# RULES:
+# 1. 'vary' section contains EXACTLY ONE component type (model, strategy, or dataset)
+# 2. 'fixed' section MUST contain ALL THREE components (model, strategy, dataset)
+# 3. The component in 'vary' will override the same component in 'fixed'
+# 4. All non-varying settings for a component should be in 'fixed'
+
+name: experiment_name
+description: Experiment description
+
+vary:
+  # Choose ONE of: model, strategy, or dataset
+  # Example: Comparing different strategies
+  strategy:
+    - name: strategy1
+      type: strategy1_type  # Optional if type == name
+      params:              # Optional if no parameters
+        param1: value1
+        
+    - name: strategy2
+      type: strategy2_type
+      params:
+        param1: value2
+
+fixed:
+  # ALL THREE components MUST be specified
+  
+  model:
+    name: model_name
+    type: model_type      # Optional if type == name
+    params: {}            # Use empty dict if no parameters
+    
+  strategy:
+    name: default_strategy
+    type: strategy_type   # Optional if type == name
+    params: {}            # Use empty dict if no parameters
+    
+  dataset:
+    name: dataset_name
+    type: dataset_type   # Optional if type == name
+    params: {}            # Use empty dict if no parameters
+    # Dataset-specific settings (outside params)
+    n_experiences: 10
+    test_split: 0.2
+    image_size: [64, 64]  # Can be auto-adjusted based on model
+    
+  # Training settings (optional)
+  training:
+    epochs_per_experience: 5
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment settings (optional)
+  experiment:
+    seeds: [42, 123, 456]  # Multiple seeds for averaging
+    device: cuda
+    save_checkpoints: false
+    verbose: false

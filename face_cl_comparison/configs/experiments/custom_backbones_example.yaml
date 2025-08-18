@@ -1,0 +1,70 @@
+# Example configuration using custom backbone models from backbones directory
+name: custom_backbones_comparison
+description: Compare custom face recognition backbones with EfficientNet on LFW using SLDA
+
+vary:
+  # Compare different backbone models
+  model:
+    # Ghost Face Net V2 
+    - name: ghostface_512
+      type: ghostfacenetv2
+      params:
+        image_size: 112  # GhostFaceNetV2 expects single integer
+        num_features: 512
+        width: 1.0
+        
+    # Skip Modified MobileFaceNet - requires 256x256 images
+        
+    # Compare with standard EfficientNet
+    - name: efficientnet_b0
+      type: efficientnet_b0
+      params:
+        pretrained: true
+        
+    # Skip DWSeesawFaceV2 for now - requires 256x256 images
+
+fixed:
+  # ALL THREE components must be specified
+  
+  # Fixed model (placeholder - will be overridden by vary)
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  # Fixed strategy - SLDA
+  strategy:
+    name: slda
+    type: slda
+    params:
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+  # Fixed dataset - LFW (supports custom image sizes)
+  dataset:
+    name: lfw_60
+    is_predefined: true  # Explicitly mark as predefined
+    n_experiences: 10
+    test_split: 0.2
+    # Image size will be auto-adjusted based on model requirements
+    
+  # Training configuration
+  training:
+    epochs_per_experience: 1  # SLDA typically uses 1 epoch
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed for testing
+    device: cuda
+    save_checkpoints: false
+    
+# Notes:
+# - Custom face models output normalized embeddings
+# - A classifier layer is automatically added for CL tasks
+# - Models expect grayscale input (1 channel)
+# - SLDA uses the embeddings directly for NCM classification
+# - Image sizes will be auto-adjusted: 112x112 for face models, 64x64 for EfficientNet

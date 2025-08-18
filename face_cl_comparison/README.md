@@ -10,6 +10,10 @@ A flexible framework for comparing continual learning strategies on face recogni
   - Olivetti Faces (40 identities) - Quick testing
   - LFW - Labeled Faces in the Wild (158+ identities) - Real-world conditions
   - Custom LFW subsets (e.g., lfw_50, lfw_100, lfw_200)
+- **Custom Backbone Models**: Support for importing face recognition models from `backbones/` directory
+  - DWSeesawFaceV2
+  - GhostFaceNetV2
+  - Modified MobileFaceNet
 - **Efficient Experimentation**: YAML-based configuration, multi-seed evaluation, automatic result aggregation
 
 ## Installation
@@ -184,42 +188,18 @@ comparison:
 
 ### NEW: Modular Configuration Format (Recommended)
 
-The modular format allows you to define custom datasets, models, and strategies inline:
+The modular format provides a clean way to compare different configurations:
 
 ```yaml
 name: modular_experiment
-description: "Modular config with inline definitions"
+description: "Compare different strategies on fixed model and dataset"
 
 vary:
-  # Define datasets - mix predefined and custom
-  dataset:
-    - name: olivetti  # Predefined dataset
-    
-    - name: lfw_custom_20  # Custom inline definition
-      type: lfw
-      params:
-        target_classes: 20
-        min_samples_per_class: 50
-        selection_strategy: most_samples
-        
-  # Define models with configurations
-  model:
-    - name: eff_b0_pretrained
-      type: efficientnet_b0
-      params:
-        pretrained: true
-        
-    - name: resnet18_frozen
-      type: resnet18
-      params:
-        pretrained: true
-        freeze_backbone: true
-        
-  # Define strategies with parameters
+  # Choose EXACTLY ONE component type to vary (model, strategy, or dataset)
   strategy:
-    - name: naive  # Simple predefined
+    - name: naive  # Predefined (minimal dict)
     
-    - name: slda_tuned
+    - name: slda_tuned  # Custom (full dict)
       type: slda
       params:
         shrinkage_param: 0.01
@@ -235,16 +215,59 @@ vary:
             alpha: 0.5
 
 fixed:
+  # ALL THREE components MUST be specified in fixed
+  
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+      
+  strategy:
+    name: naive  # Default/placeholder (will be overridden by vary)
+    
   dataset:
+    name: lfw_60
+    type: lfw_60
+    params: {}  # Empty params for predefined dataset
     n_experiences: 10
     test_split: 0.2
-    image_size: [64, 64]
+    image_size: [64, 64]  # Auto-adjusted based on model requirements
     
   training:
-    epochs_per_experience: 1
+    epochs_per_experience: 5
     batch_size: 32
     lr: 0.001
-    debug: true  # Single seed for testing
+    
+  experiment:
+    seeds: [42, 123, 456]  # Multiple seeds for statistical significance
+    device: cuda
+```
+
+**Modular Format Rules:**
+1. **`vary`** section: Contains EXACTLY ONE component type (model, strategy, or dataset)
+2. **`fixed`** section: MUST contain ALL THREE components (model, strategy, dataset)
+3. The component in `vary` overrides the same component in `fixed`
+4. All settings for a component (like n_experiences for dataset) go in `fixed`
+
+**Unified Dict Format:**
+- **Predefined**: Use minimal dict with just `name` field
+- **Custom**: Add `type` and/or `params` fields
+- **Consistent**: Everything uses the same dict structure
+- **Clear**: Easy to tell predefined from custom at a glance
+
+Examples:
+```yaml
+# Predefined - minimal dict
+- name: olivetti
+- name: efficientnet_b0
+- name: naive
+
+# Custom - full dict
+- name: lfw_custom
+  type: lfw
+  params:
+    target_classes: 50
 ```
 
 **Benefits of Modular Format:**
@@ -253,7 +276,11 @@ fixed:
 - **Readable**: Clear names for each configuration
 - **Reusable**: Share custom definitions across experiments
 
-See `configs/experiments/modular_config_example.yaml` and `configs/experiments/modular_simple_example.yaml` for complete examples.
+See example configs:
+- `configs/experiments/unified_format_example.yaml` - Shows all format options
+- `configs/experiments/modular_simple_example.yaml` - Simple getting started example
+- `configs/experiments/modular_config_example.yaml` - Comprehensive example
+- `configs/experiments/custom_backbones_example.yaml` - Using custom backbone models
 
 ### Classic Configuration Format
 
@@ -313,6 +340,44 @@ ewc_replay_lwf    ewc               efficientnet_b1   olivetti          0.650 ±
 ```
 
 ## Advanced Usage
+
+### Using Custom Backbone Models
+
+The framework supports importing custom face recognition models from the `backbones/` directory (located at the project root). These models are automatically wrapped to work with continual learning strategies.
+
+#### Available Custom Backbones
+
+1. **DWSeesawFaceV2** (`dwseesawfacev2`)
+   - Efficient face recognition model with seesaw architecture
+   - Parameters: `embedding_size` (default: 512)
+
+2. **GhostFaceNetV2** (`ghostfacenetv2`)
+   - Lightweight model using ghost modules
+   - Parameters: `image_size` (default: [112, 112]), `num_features` (default: 512), `width` (default: 1.0)
+
+3. **Modified MobileFaceNet** (`modified_mobilefacenet`)
+   - Mobile-optimized face recognition model
+   - Parameters: Model-specific kwargs
+
+#### Example Configuration
+
+```yaml
+vary:
+  model:
+    - name: dwseesaw_512
+      type: dwseesawfacev2
+      params:
+        embedding_size: 512
+        
+    - name: ghostface_small
+      type: ghostfacenetv2
+      params:
+        image_size: [64, 64]
+        num_features: 256
+        width: 0.5
+```
+
+**Note**: These face models output normalized embeddings. The framework automatically adds a classifier layer for continual learning tasks.
 
 ### Custom Plugin Combinations
 

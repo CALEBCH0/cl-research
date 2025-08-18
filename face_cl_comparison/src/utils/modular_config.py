@@ -9,15 +9,20 @@ def process_modular_item(item: Union[str, Dict[str, Any]], item_type: str) -> Di
     """
     Process a modular config item (dataset, model, or strategy).
     
+    Unified format:
+    - Dict with only 'name' -> predefined
+    - Dict with 'type' and/or 'params' -> custom
+    - String (for backward compatibility) -> predefined
+    
     Args:
-        item: Either a string (predefined) or dict (custom definition)
+        item: Either a string (backward compat) or dict
         item_type: Type of item ('dataset', 'model', 'strategy')
         
     Returns:
         Normalized dict with 'name', 'type', and 'params'
     """
     if isinstance(item, str):
-        # Simple predefined item
+        # Backward compatibility: string means predefined
         return {
             'name': item,
             'type': item,  # For predefined, type == name
@@ -26,20 +31,32 @@ def process_modular_item(item: Union[str, Dict[str, Any]], item_type: str) -> Di
         }
     
     elif isinstance(item, dict):
-        # Check if it's just a name reference (no type or params)
-        if 'name' in item and 'type' not in item and 'params' not in item:
-            # This is a predefined item in dict format
+        # Must have 'name' field
+        if 'name' not in item:
+            raise ValueError(f"{item_type} config must have 'name' field: {item}")
+        
+        # Check if it's predefined (only 'name' field or no 'type'/'params')
+        # Allow additional metadata fields like comments
+        core_fields = {'name', 'type', 'params', 'plugins'}
+        item_core_fields = set(item.keys()) & core_fields
+        
+        if item_core_fields == {'name'} or (
+            'type' not in item and 
+            'params' not in item and 
+            item_type + '_params' not in item
+        ):
+            # Predefined item - minimal dict with just name
             return {
                 'name': item['name'],
-                'type': item['name'],
+                'type': item['name'],  # For predefined, type == name
                 'params': {},
                 'is_predefined': True
             }
         
         # Custom definition
         result = {
-            'name': item.get('name', f'custom_{item_type}'),
-            'type': item.get('type', item.get('name', 'unknown')),
+            'name': item['name'],
+            'type': item.get('type', item['name']),  # Default type to name
             'params': item.get('params', {}),
             'is_predefined': False
         }
@@ -75,6 +92,19 @@ def expand_modular_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     vary = config.get('vary', {})
     fixed = config.get('fixed', {})
     
+    # Process fixed items that might be strings or dicts
+    for key in ['model', 'strategy', 'dataset']:
+        if key in fixed:
+            value = fixed[key]
+            # Process if it's a string or a dict with 'name'
+            if isinstance(value, (str, dict)):
+                if isinstance(value, dict) and 'name' in value:
+                    # It's already in dict format, process it
+                    fixed[key] = process_modular_item(value, key)
+                elif isinstance(value, str):
+                    # Convert string to dict format
+                    fixed[key] = process_modular_item(value, key)
+    
     # Process each vary dimension
     vary_dimensions = {}
     for key, values in vary.items():
@@ -103,8 +133,19 @@ def expand_modular_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
         # Add vary parameters
         for dim_name, value in zip(dim_names, combo):
             if dim_name in ['dataset', 'model', 'strategy']:
-                # Modular item
-                run_config[dim_name] = value
+                # Modular item - merge with fixed config
+                # Start with fixed config for this component
+                if dim_name in fixed:
+                    merged_config = copy.deepcopy(fixed[dim_name])
+                    # Update with vary config (vary takes precedence)
+                    merged_config.update(value)
+                    # Preserve any fixed settings not in vary
+                    for key in fixed[dim_name]:
+                        if key not in value and key not in ['name', 'type', 'params']:
+                            merged_config[key] = fixed[dim_name][key]
+                    run_config[dim_name] = merged_config
+                else:
+                    run_config[dim_name] = value
                 name_parts.append(f"{dim_name}={value['name']}")
             else:
                 # Regular parameter
@@ -141,17 +182,32 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
     Returns:
         Dataset benchmark and info
     """
-    from src.datasets import create_dataset
+    from src.training import create_benchmark
     from src.datasets.lfw import create_lfw_controlled_benchmark
     from src.datasets.subset_utils import DatasetSubsetConfig
     
     if dataset_config['is_predefined']:
-        # Use existing create_dataset function
-        return create_dataset(
-            dataset_config['name'],
-            n_experiences=dataset_config.get('n_experiences', 10),
-            seed=dataset_config.get('seed', 42)
-        )
+        # Check if it's an LFW variant that needs image_size
+        if dataset_config['name'].startswith('lfw'):
+            # Use LFW-specific creation with image_size support
+            from src.datasets.lfw import create_lfw_benchmark
+            from src.datasets.lfw_configs import get_lfw_config
+            
+            config = get_lfw_config(dataset_config['name'])
+            return create_lfw_benchmark(
+                n_experiences=dataset_config.get('n_experiences', 10),
+                min_faces_per_person=config['min_faces_per_person'],
+                image_size=tuple(dataset_config.get('image_size', [64, 64])),
+                seed=dataset_config.get('seed', 42)
+            )
+        else:
+            # Use existing create_benchmark function for other datasets
+            return create_benchmark(
+                dataset_config['name'],
+                experiences=dataset_config.get('n_experiences', 10),
+                seed=dataset_config.get('seed', 42),
+                subset_config=None
+            )
     
     else:
         # Custom dataset
@@ -178,79 +234,165 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
             raise ValueError(f"Unknown custom dataset type: {dataset_type}")
 
 
-def create_model_from_config(model_config: Dict[str, Any], num_classes: int):
+def create_model_from_config(model_config: Dict[str, Any], benchmark_info):
     """
     Create a model based on modular config.
     
     Args:
         model_config: Processed model config with name, type, params
-        num_classes: Number of output classes
+        benchmark_info: Either a BenchmarkInfo namedtuple or dict with benchmark information
         
     Returns:
         Model instance
     """
-    from src.models.backbones import create_backbone
+    # Extract num_classes from benchmark_info (handle both dict and namedtuple)
+    if hasattr(benchmark_info, 'num_classes'):
+        num_classes = benchmark_info.num_classes
+    else:
+        num_classes = benchmark_info['num_classes']
+    model_type = model_config['type']
+    params = model_config.get('params', {})
     
-    backbone_name = model_config['type']
-    params = model_config['params']
-    
-    # Create backbone with parameters
-    backbone = create_backbone(
-        backbone_name,
-        pretrained=params.get('pretrained', True),
-        num_classes=num_classes
-    )
+    # Check if it's a custom backbone model
+    if model_type in ['dwseesawfacev2', 'ghostfacenetv2', 'modified_mobilefacenet']:
+        # Custom backbone models - pass all params as kwargs
+        from src.training import create_model
+        
+        # Create a temporary benchmark info for compatibility
+        from collections import namedtuple
+        BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
+        
+        # Determine input size based on model or params
+        if model_type == 'ghostfacenetv2' and 'image_size' in params:
+            # GhostFaceNetV2 expects integer image_size, not tuple
+            img_size = params['image_size']
+            if isinstance(img_size, int):
+                input_size = img_size * img_size
+            else:
+                input_size = img_size[0] * img_size[1]
+        else:
+            input_size = 64 * 64  # Default
+            
+        benchmark_info = BenchmarkInfo(
+            input_size=input_size,
+            num_classes=num_classes,
+            channels=1  # Most face models expect grayscale
+        )
+        
+        # Create model with all params
+        model = create_model(model_type, benchmark_info, **params)
+        
+        # For face models, we don't need to add a classifier here
+        # The strategy (especially SLDA) will handle that
+        # Just return the backbone model that outputs embeddings
+        
+    else:
+        # Try original backbone creation
+        try:
+            from src.models.backbones import create_backbone
+            
+            backbone = create_backbone(
+                model_type,
+                pretrained=params.get('pretrained', True),
+                num_classes=num_classes
+            )
+            model = backbone
+        except:
+            # Fallback to training.py create_model
+            from src.training import create_model
+            from collections import namedtuple
+            
+            BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
+            benchmark_info = BenchmarkInfo(
+                input_size=64 * 64,
+                num_classes=num_classes,
+                channels=1
+            )
+            
+            model = create_model(model_type, benchmark_info, **params)
     
     # Apply additional settings
     if params.get('freeze_backbone', False):
         # Freeze all parameters except classifier
-        for name, param in backbone.named_parameters():
+        for name, param in model.named_parameters():
             if 'classifier' not in name and 'fc' not in name:
                 param.requires_grad = False
     
-    # Add dropout if specified
-    if 'dropout_rate' in params:
-        import torch.nn as nn
-        # This would need model-specific implementation
-        # For now, just return the backbone
-        pass
-    
-    return backbone
+    return model
 
 
 def create_strategy_from_config(strategy_config: Dict[str, Any], model, 
-                               num_classes: int, device: str = 'cuda'):
+                               benchmark_info, optimizer, criterion, 
+                               eval_plugin, device: str = 'cuda', 
+                               model_type: str = None, **kwargs):
     """
     Create a strategy based on modular config.
     
     Args:
         strategy_config: Processed strategy config with name, type, params, plugins
         model: The model to use
-        num_classes: Number of classes
+        benchmark_info: Benchmark information
+        optimizer: Optimizer instance
+        criterion: Loss criterion
+        eval_plugin: Evaluation plugin
         device: Device to use
+        model_type: Type of model (for feature extraction)
+        **kwargs: Additional training parameters
         
     Returns:
         Strategy instance
     """
-    from src.strategies import create_strategy
-    
-    strategy_name = strategy_config['type']
-    params = strategy_config.get('params', {})
-    plugins = strategy_config.get('plugins', [])
-    
-    # Process plugins if they're in modular format
-    processed_plugins = []
-    for plugin in plugins:
-        if isinstance(plugin, str):
-            processed_plugins.append({'name': plugin})
-        else:
-            processed_plugins.append(plugin)
-    
-    return create_strategy(
-        strategy_name,
-        model,
-        num_classes,
-        device=device,
-        params=params,
-        plugins=processed_plugins
-    )
+    # Try to use the improved version first
+    try:
+        from src.training_v2 import create_strategy_from_config_v2
+        return create_strategy_from_config_v2(
+            strategy_config=strategy_config,
+            model=model,
+            benchmark_info=benchmark_info,
+            optimizer=optimizer,
+            criterion=criterion,
+            eval_plugin=eval_plugin,
+            device=device,
+            model_type=model_type,
+            **kwargs
+        )
+    except ImportError:
+        # Fallback to original implementation
+        from src.training import create_strategy
+        
+        strategy_name = strategy_config['type']
+        params = strategy_config.get('params', {})
+        plugins = strategy_config.get('plugins', [])
+        
+        # Process plugins if they're in modular format
+        processed_plugins = []
+        for plugin in plugins:
+            if isinstance(plugin, str):
+                processed_plugins.append({'name': plugin})
+            else:
+                processed_plugins.append(plugin)
+        
+        # Merge all parameters, with strategy params taking precedence
+        all_params = {**kwargs}
+        all_params.update(params)
+        
+        # Extract specific parameters that create_strategy expects as positional/keyword args
+        mem_size = all_params.pop('mem_size', 200)
+        epochs = all_params.pop('epochs', kwargs.get('epochs', 1))
+        batch_size = all_params.pop('batch_size', kwargs.get('batch_size', 32))
+        
+        return create_strategy(
+            strategy_name=strategy_name,
+            model=model,
+            optimizer=optimizer,
+            criterion=criterion,
+            device=device,
+            eval_plugin=eval_plugin,
+            mem_size=mem_size,
+            model_type=model_type,
+            benchmark_info=benchmark_info,
+            plugins_config=processed_plugins,
+            epochs=epochs,
+            batch_size=batch_size,
+            **all_params  # Pass any remaining params
+        )

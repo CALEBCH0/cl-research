@@ -40,6 +40,33 @@ except ImportError:
 BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
 
 
+def normalize_benchmark_info(benchmark_info):
+    """Convert benchmark_info dict to BenchmarkInfo namedtuple if needed."""
+    if hasattr(benchmark_info, 'num_classes'):
+        # Already a namedtuple or similar object
+        return benchmark_info
+    else:
+        # It's a dict, convert to namedtuple
+        # Handle different possible keys in the dict
+        if 'image_shape' in benchmark_info:
+            # LFW format: (channels, height, width)
+            channels, height, width = benchmark_info['image_shape']
+            input_size = height * width
+        elif 'input_size' in benchmark_info:
+            input_size = benchmark_info['input_size']
+            channels = benchmark_info.get('channels', 1)
+        else:
+            # Default values
+            input_size = 64 * 64
+            channels = 1
+            
+        return BenchmarkInfo(
+            input_size=input_size,
+            num_classes=benchmark_info['num_classes'],
+            channels=channels
+        )
+
+
 def create_benchmark(benchmark_name, experiences=5, seed=42, subset_config=None):
     """Create benchmark separately for caching purposes."""
     return set_benchmark(benchmark_name, experiences, seed, subset_config)
@@ -240,7 +267,7 @@ def set_benchmark(benchmark_name, experiences=5, seed=42, subset_config=None):
     return benchmark, BenchmarkInfo(input_size, num_classes, channels)
 
 
-def create_model(model_type, benchmark_info):
+def create_model(model_type, benchmark_info, **kwargs):
     """Create model based on type and benchmark."""
     if model_type == 'mlp':
         model = SimpleMLP(
@@ -344,6 +371,46 @@ def create_model(model_type, benchmark_info):
             except Exception as e:
                 print(f"Error creating {model_type}: {e}")
                 raise ValueError(f"Failed to create model {model_type}")
+    elif model_type in ['dwseesawfacev2', 'ghostfacenetv2', 'modified_mobilefacenet']:
+        # Import custom backbone models from backbones directory
+        import sys
+        import os
+        # Add cl-research directory to path to access backbones and utils
+        cl_research_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+        sys.path.insert(0, cl_research_path)
+        
+        # Also add the parent directory to access utils.common
+        parent_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+        if parent_path not in sys.path:
+            sys.path.insert(0, parent_path)
+        
+        try:
+            if model_type == 'dwseesawfacev2':
+                from backbones.DWseesawfaceV2 import dwseesawfacev2
+                embedding_size = kwargs.get('embedding_size', 512)
+                model = dwseesawfacev2(embedding_size=embedding_size)
+                
+            elif model_type == 'ghostfacenetv2':
+                from backbones.ghostfacenetV2 import ghostfacenetv2
+                image_size = kwargs.get('image_size', (112, 112))
+                # GhostFaceNetV2 expects a single integer for image size, not a tuple
+                if isinstance(image_size, (list, tuple)):
+                    image_size = image_size[0]  # Assume square images
+                num_features = kwargs.get('num_features', 512)
+                width = kwargs.get('width', 1.0)
+                model = ghostfacenetv2(image_size=image_size, num_features=num_features, width=width)
+                
+            elif model_type == 'modified_mobilefacenet':
+                from backbones.modified_mobilefacenet import modified_mbilefacenet
+                # Pass all kwargs to the model
+                model = modified_mbilefacenet(**kwargs)
+                
+        except ImportError as e:
+            print(f"Error importing {model_type}: {e}")
+            raise ValueError(f"Failed to import backbone model {model_type}")
+        except Exception as e:
+            print(f"Error creating {model_type}: {e}")
+            raise ValueError(f"Failed to create backbone model {model_type}")
     else:
         raise ValueError(f"Unknown model type: {model_type}")
     
@@ -702,6 +769,9 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
             print(f"Experiences: {experiences}")
         benchmark, benchmark_info = set_benchmark(benchmark_name, experiences, seed, subset_config)
     
+    # Normalize benchmark_info to ensure it's a namedtuple
+    benchmark_info = normalize_benchmark_info(benchmark_info)
+    
     if verbose:
         print(f"\n=== Running training ===")
         print(f"Dataset: {benchmark_name}")
@@ -714,7 +784,7 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
     if model_config:
         # Use modular config to create model
         from src.utils.modular_config import create_model_from_config
-        model = create_model_from_config(model_config, benchmark_info.num_classes)
+        model = create_model_from_config(model_config, benchmark_info)
     else:
         # Use original model creation
         model = create_model(model_type, benchmark_info)
@@ -749,20 +819,25 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
         # Use modular config to create strategy
         from src.utils.modular_config import create_strategy_from_config
         strategy = create_strategy_from_config(
-            strategy_config, model, benchmark_info.num_classes, device
+            strategy_config=strategy_config,
+            model=model,
+            benchmark_info=benchmark_info,
+            optimizer=optimizer,
+            criterion=criterion,
+            eval_plugin=eval_plugin,
+            device=device,
+            model_type=model_type,
+            epochs=epochs,
+            batch_size=batch_size,
+            mem_size=mem_size
         )
-        # Set optimizer and criterion
-        strategy.optimizer = optimizer
-        strategy.criterion = criterion
-        strategy.evaluator = eval_plugin
-        strategy.train_epochs = epochs
-        strategy.train_mb_size = batch_size
     else:
         # Use original strategy creation
         strategy = create_strategy(
             strategy_name, model, optimizer, criterion, device, eval_plugin,
             mem_size=mem_size, model_type=model_type, benchmark_info=benchmark_info,
-            epochs=epochs, batch_size=batch_size, num_classes=benchmark_info.num_classes,
+            epochs=epochs, batch_size=batch_size, 
+            num_classes=benchmark_info.num_classes if hasattr(benchmark_info, 'num_classes') else benchmark_info['num_classes'],
             plugins_config=plugins_config
         )
     

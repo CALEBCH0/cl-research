@@ -6,8 +6,8 @@ description: Simple demo comparing datasets with SLDA
 vary:
   # Compare different datasets
   dataset:
-    # Predefined dataset (just a string)
-    - olivetti
+    # Predefined dataset (minimal dict)
+    - name: olivetti
     
     # Custom LFW subset with inline parameters
     - name: lfw_easy

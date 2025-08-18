@@ -1,0 +1,86 @@
+# Unified Format Example - Everything uses dict format
+name: unified_format_demo
+description: Shows the unified dict format for all configurations
+
+vary:
+  # Datasets - all use dict format
+  dataset:
+    # Predefined datasets - minimal dict with just name
+    - name: olivetti
+    - name: lfw_12
+    
+    # Custom datasets - dict with type and params
+    - name: lfw_custom_small
+      type: lfw
+      params:
+        target_classes: 20
+        min_samples_per_class: 50
+        selection_strategy: most_samples
+        
+  # Models - all use dict format  
+  model:
+    # Predefined models - minimal dict
+    - name: efficientnet_b0
+    - name: resnet18
+    
+    # Custom model configurations
+    - name: efficientnet_b1_frozen
+      type: efficientnet_b1
+      params:
+        pretrained: true
+        freeze_backbone: true
+        
+  # Strategies - all use dict format
+  strategy:
+    # Predefined strategies - minimal dict
+    - name: naive
+    - name: slda
+    
+    # Custom strategy configurations
+    - name: replay_large
+      type: replay
+      params:
+        mem_size: 1000
+        
+    - name: ewc_tuned
+      type: ewc
+      params:
+        ewc_lambda: 0.8
+        mode: online
+        
+    # Strategy with plugins
+    - name: naive_with_replay
+      type: naive
+      plugins:
+        - name: replay
+          type: ReplayPlugin
+          params:
+            mem_size: 500
+
+# Fixed section also uses the same format
+fixed:
+  # Can use minimal dict for predefined
+  model:
+    name: efficientnet_b0
+    
+  # Or full dict for custom (but in fixed section)
+  # model:
+  #   name: custom_resnet
+  #   type: resnet50
+  #   params:
+  #     pretrained: false
+  #     num_classes: 100
+    
+  dataset:
+    name: olivetti
+    n_experiences: 10
+    
+  # You can even specify a fixed strategy if needed
+  # strategy:
+  #   name: slda
+    
+  training:
+    epochs_per_experience: 1
+    batch_size: 32
+    lr: 0.001
+    debug: true

@@ -329,12 +329,22 @@ def main():
                     # Override n_experiences if specified in params
                     if 'n_experiences' in dataset_config.get('params', {}):
                         n_experiences = dataset_config['params']['n_experiences']
+                    # Also check if n_experiences is directly in dataset_config (from fixed merge)
+                    elif 'n_experiences' in dataset_config:
+                        n_experiences = dataset_config['n_experiences']
                     
                     # Create cache key for modular dataset
+                    # Include image_size in cache key if it will be auto-adjusted
+                    cache_params = dataset_config.get('params', {}).copy()
+                    if 'model_config' in run_config:
+                        from src.utils.model_utils import get_dataset_requirements_for_model
+                        model_reqs = get_dataset_requirements_for_model(run_config['model_config'])
+                        cache_params['image_size'] = model_reqs['image_size']
+                    
                     cache_key = (
                         dataset_config['name'],
                         n_experiences,
-                        frozenset(dataset_config.get('params', {}).items())
+                        frozenset(cache_params.items())
                     )
                     
                     if cache_key in benchmark_cache:
@@ -344,12 +354,19 @@ def main():
                     else:
                         # Create modular dataset
                         from src.utils.modular_config import create_dataset_from_config
+                        from src.utils.model_utils import merge_dataset_config_with_model_requirements
                         
                         # Merge fixed dataset settings with modular config
                         full_dataset_config = dataset_config.copy()
                         for key, value in fixed.get('dataset', {}).items():
                             if key not in full_dataset_config:
                                 full_dataset_config[key] = value
+                        
+                        # Auto-adjust dataset config based on model requirements
+                        if 'model_config' in run_config:
+                            full_dataset_config = merge_dataset_config_with_model_requirements(
+                                full_dataset_config, run_config['model_config']
+                            )
                         
                         cached_benchmark, cached_info = create_dataset_from_config(full_dataset_config)
                         benchmark_cache[cache_key] = (cached_benchmark, cached_info)
