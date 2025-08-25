@@ -45,13 +45,18 @@ def process_modular_item(item: Union[str, Dict[str, Any]], item_type: str) -> Di
             'params' not in item and 
             item_type + '_params' not in item
         ):
-            # Predefined item - minimal dict with just name
-            return {
+            # Predefined item - minimal dict with just name, but preserve special fields
+            result = {
                 'name': item['name'],
                 'type': item['name'],  # For predefined, type == name
                 'params': {},
                 'is_predefined': True
             }
+            # Preserve special fields like path, test_split, n_experiences, etc.
+            for key in ['path', 'test_split', 'n_experiences', 'image_size', 'seed']:
+                if key in item:
+                    result[key] = item[key]
+            return result
         
         # Custom definition
         result = {
@@ -66,7 +71,7 @@ def process_modular_item(item: Union[str, Dict[str, Any]], item_type: str) -> Di
             result['plugins'] = item['plugins']
             
         # Handle other special fields
-        for key in ['plugins', 'transforms', 'augmentations']:
+        for key in ['plugins', 'transforms', 'augmentations', 'path', 'test_split', 'n_experiences', 'image_size', 'seed']:
             if key in item and key not in result:
                 result[key] = item[key]
                 
@@ -206,6 +211,7 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
             
             # Get custom path if specified
             root_dir = dataset_config.get('path', '/Users/calebcho/data/face_dataset')
+            print(f"Using SmartEye dataset path: {root_dir}")
             
             if dataset_config['name'] in ['smarteye_crop', 'smarteye_raw']:
                 config = get_smarteye_config(dataset_config['name'])
