@@ -1,0 +1,62 @@
+# Test custom backbones with Naive strategy (standard classification)
+name: custom_backbones_naive
+description: Compare custom face recognition backbones with EfficientNet using Naive strategy
+
+vary:
+  # Compare different backbone models
+  model:
+    # Ghost Face Net V2 
+    - name: ghostface_512
+      type: ghostfacenetv2
+      params:
+        image_size: 112  # GhostFaceNetV2 expects single integer
+        num_features: 512
+        width: 1.0
+        
+    # Compare with standard EfficientNet
+    - name: efficientnet_b0
+      type: efficientnet_b0
+      params:
+        pretrained: true
+
+fixed:
+  # ALL THREE components must be specified
+  
+  # Fixed model (placeholder - will be overridden by vary)
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  # Fixed strategy - Naive (standard SGD training)
+  strategy:
+    name: naive
+    type: naive
+    params: {}
+      
+  # Fixed dataset - LFW (supports custom image sizes)
+  dataset:
+    name: lfw_60
+    is_predefined: true  # Explicitly mark as predefined
+    n_experiences: 10
+    test_split: 0.2
+    # Image size will be auto-adjusted based on model requirements
+    
+  # Training configuration
+  training:
+    epochs_per_experience: 5  # More epochs for better training
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed for testing
+    device: cuda
+    save_checkpoints: false
+    
+# Notes:
+# - Testing with Naive strategy to see if the issue is SLDA-specific
+# - Using standard classification instead of NCM
+# - More epochs to give models time to train

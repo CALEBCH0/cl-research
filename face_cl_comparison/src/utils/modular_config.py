@@ -200,6 +200,27 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
                 image_size=tuple(dataset_config.get('image_size', [64, 64])),
                 seed=dataset_config.get('seed', 42)
             )
+        elif dataset_config['name'].startswith('smarteye'):
+            # Use SmartEye-specific creation with image_size support
+            from src.datasets.smarteye import create_smarteye_benchmark, get_smarteye_config
+            
+            if dataset_config['name'] in ['smarteye_crop', 'smarteye_raw']:
+                config = get_smarteye_config(dataset_config['name'])
+                return create_smarteye_benchmark(
+                    n_experiences=dataset_config.get('n_experiences', 5),
+                    use_cropdata=config['use_cropdata'],
+                    image_size=tuple(dataset_config.get('image_size', [112, 112])),
+                    seed=dataset_config.get('seed', 42),
+                    min_samples_per_class=config['min_samples_per_class']
+                )
+            else:
+                # Default SmartEye config
+                return create_smarteye_benchmark(
+                    n_experiences=dataset_config.get('n_experiences', 5),
+                    use_cropdata=True,
+                    image_size=tuple(dataset_config.get('image_size', [112, 112])),
+                    seed=dataset_config.get('seed', 42)
+                )
         else:
             # Use existing create_benchmark function for other datasets
             return create_benchmark(

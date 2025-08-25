@@ -174,7 +174,10 @@ def main():
     
     # Determine config path
     if args.exp:
-        config_path = Path(f'configs/experiments/{args.exp}.yaml')
+        if args.exp.endswith(('.yml', '.yaml')):
+            config_path = Path(f'configs/experiments/{args.exp}')
+        else:
+            config_path = Path(f'configs/experiments/{args.exp}.yaml')
     else:
         config_path = Path(args.config) if args.config else None
     

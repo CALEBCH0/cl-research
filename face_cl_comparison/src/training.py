@@ -261,6 +261,48 @@ def set_benchmark(benchmark_name, experiences=5, seed=42, subset_config=None):
         print(f"  Test samples: {dataset_info['num_test_samples']}")
         if 'n_experiences' in dataset_info:
             print(f"  Experiences: {dataset_info['n_experiences']} (classes per exp: {dataset_info['classes_per_exp']})")
+            
+    elif benchmark_name.startswith('smarteye'):
+        # SmartEye IR face dataset
+        from src.datasets.smarteye import create_smarteye_benchmark, get_smarteye_config
+        
+        # Handle both predefined configs and subset configs
+        if subset_config is not None:
+            from src.datasets.smarteye import create_smarteye_controlled_benchmark
+            benchmark, dataset_info = create_smarteye_controlled_benchmark(
+                subset_config,
+                image_size=(112, 112)  # Default size for face models
+            )
+        elif benchmark_name in ['smarteye_crop', 'smarteye_raw']:
+            config = get_smarteye_config(benchmark_name)
+            benchmark, dataset_info = create_smarteye_benchmark(
+                n_experiences=experiences,
+                use_cropdata=config['use_cropdata'],
+                image_size=(112, 112),
+                seed=seed,
+                min_samples_per_class=config['min_samples_per_class']
+            )
+        else:
+            # Default to cropdata
+            benchmark, dataset_info = create_smarteye_benchmark(
+                n_experiences=experiences,
+                use_cropdata=True,
+                image_size=(112, 112),
+                seed=seed
+            )
+        
+        input_size = dataset_info['input_size']
+        num_classes = dataset_info['num_classes']
+        channels = dataset_info['channels']
+        
+        print(f"\nSmartEye Dataset loaded:")
+        print(f"  Data type: {dataset_info['data_type']}")
+        print(f"  Classes: {num_classes}")
+        print(f"  Train samples: {dataset_info['num_train']}")
+        print(f"  Test samples: {dataset_info['num_test']}")
+        print(f"  Image size: {dataset_info['image_size']}")
+        print(f"  Experiences: {dataset_info['n_experiences']}")
+        
     else:
         raise ValueError(f"Unknown benchmark: {benchmark_name}")
     

@@ -23,6 +23,10 @@ def get_model_requirements(model_type: str, model_params: Optional[Dict[str, Any
         'embedding_size': 512
     }
     
+    # For SmartEye IR face images, use larger default size
+    if 'smarteye' in model_type.lower():
+        default_requirements['input_size'] = (112, 112)
+    
     # Model-specific requirements
     model_requirements = {
         # Custom face recognition models

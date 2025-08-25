@@ -1,0 +1,269 @@
+"""SmartEye IR Face Dataset loader for Avalanche benchmarks."""
+import os
+from pathlib import Path
+from typing import Tuple, Optional, List, Dict, Any
+import numpy as np
+from PIL import Image
+import torch
+from torch.utils.data import Dataset
+from avalanche.benchmarks.generators import dataset_benchmark
+from avalanche.benchmarks.utils import AvalancheDataset
+from collections import defaultdict
+
+
+class SmartEyeFaceDataset(Dataset):
+    """Dataset for SmartEye IR face images."""
+    
+    def __init__(self, root_dir: str, use_cropdata: bool = True, 
+                 image_size: Tuple[int, int] = (112, 112),
+                 transform=None):
+        """
+        Args:
+            root_dir: Path to face_dataset directory
+            use_cropdata: If True, use cropdata; if False, use rawdata
+            image_size: Target image size (height, width)
+            transform: Optional transform to apply
+        """
+        self.root_dir = Path(root_dir)
+        self.use_cropdata = use_cropdata
+        self.image_size = image_size
+        self.transform = transform
+        
+        # Choose data directory
+        if use_cropdata:
+            self.data_dir = self.root_dir / "cropdata"
+        else:
+            self.data_dir = self.root_dir / "rawdata"
+            
+        # Load all images and labels
+        self.samples = []
+        self.labels = []
+        self.class_to_idx = {}
+        self.idx_to_class = {}
+        
+        # Get all identity folders
+        identity_folders = sorted([d for d in self.data_dir.iterdir() if d.is_dir()])
+        
+        for idx, identity_folder in enumerate(identity_folders):
+            identity_name = identity_folder.name
+            self.class_to_idx[identity_name] = idx
+            self.idx_to_class[idx] = identity_name
+            
+            # Get all images for this identity
+            image_files = sorted(list(identity_folder.glob("*.png")))
+            
+            for img_file in image_files:
+                self.samples.append(img_file)
+                self.labels.append(idx)
+                
+        self.labels = torch.LongTensor(self.labels)
+        print(f"Loaded {len(self.samples)} images from {len(identity_folders)} identities")
+        
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        img_path = self.samples[idx]
+        label = self.labels[idx]
+        
+        # Load image as grayscale (IR images)
+        image = Image.open(img_path).convert('L')
+        
+        # Resize to target size
+        image = image.resize(self.image_size, Image.BILINEAR)
+        
+        # Convert to tensor and normalize to [0, 1]
+        image = np.array(image, dtype=np.float32) / 255.0
+        image = torch.FloatTensor(image).unsqueeze(0)  # Add channel dimension
+        
+        if self.transform:
+            image = self.transform(image)
+            
+        return image, label
+
+
+def create_smarteye_benchmark(
+    root_dir: str = "/Users/calebcho/data/face_dataset",
+    use_cropdata: bool = True,
+    n_experiences: int = 5,
+    image_size: Tuple[int, int] = (112, 112),
+    test_split: float = 0.2,
+    seed: int = 42,
+    min_samples_per_class: int = 10
+):
+    """
+    Create an Avalanche benchmark from SmartEye face dataset.
+    
+    Args:
+        root_dir: Path to face_dataset directory
+        use_cropdata: If True, use cropdata; if False, use rawdata
+        n_experiences: Number of experiences to split classes into
+        image_size: Target image size
+        test_split: Fraction of data to use for testing
+        seed: Random seed
+        min_samples_per_class: Minimum samples required per class
+        
+    Returns:
+        benchmark: Avalanche benchmark
+        info: Dictionary with dataset information
+    """
+    # Set random seed
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    
+    # Create dataset
+    dataset = SmartEyeFaceDataset(
+        root_dir=root_dir,
+        use_cropdata=use_cropdata,
+        image_size=image_size
+    )
+    
+    # Filter classes with too few samples
+    samples_per_class = defaultdict(int)
+    for label in dataset.labels:
+        samples_per_class[label.item()] += 1
+    
+    valid_classes = [cls for cls, count in samples_per_class.items() 
+                     if count >= min_samples_per_class]
+    
+    if len(valid_classes) < len(samples_per_class):
+        print(f"Filtering classes: keeping {len(valid_classes)}/{len(samples_per_class)} "
+              f"classes with >= {min_samples_per_class} samples")
+        
+        # Filter samples
+        valid_indices = [i for i, label in enumerate(dataset.labels) 
+                        if label.item() in valid_classes]
+        
+        dataset.samples = [dataset.samples[i] for i in valid_indices]
+        dataset.labels = dataset.labels[valid_indices]
+        
+        # Remap class indices
+        old_to_new = {old_idx: new_idx for new_idx, old_idx in enumerate(sorted(valid_classes))}
+        dataset.labels = torch.LongTensor([old_to_new[label.item()] for label in dataset.labels])
+        
+        # Update class mappings
+        new_class_to_idx = {}
+        new_idx_to_class = {}
+        for old_idx in sorted(valid_classes):
+            identity_name = dataset.idx_to_class[old_idx]
+            new_idx = old_to_new[old_idx]
+            new_class_to_idx[identity_name] = new_idx
+            new_idx_to_class[new_idx] = identity_name
+        
+        dataset.class_to_idx = new_class_to_idx
+        dataset.idx_to_class = new_idx_to_class
+    
+    num_classes = len(dataset.class_to_idx)
+    
+    # Create train/test split
+    indices = torch.randperm(len(dataset))
+    n_test = int(len(dataset) * test_split)
+    test_indices = indices[:n_test]
+    train_indices = indices[n_test:]
+    
+    # Create train and test datasets
+    train_dataset = torch.utils.data.Subset(dataset, train_indices)
+    test_dataset = torch.utils.data.Subset(dataset, test_indices)
+    
+    # Get labels for splitting into experiences
+    train_labels = dataset.labels[train_indices]
+    test_labels = dataset.labels[test_indices]
+    
+    # Create Avalanche datasets
+    train_dataset = AvalancheDataset(
+        train_dataset,
+        targets=train_labels,
+        task_labels=torch.zeros_like(train_labels)
+    )
+    
+    test_dataset = AvalancheDataset(
+        test_dataset,
+        targets=test_labels,
+        task_labels=torch.zeros_like(test_labels)
+    )
+    
+    # Find valid n_experiences
+    valid_n_experiences = []
+    for n in range(1, num_classes + 1):
+        if num_classes % n == 0:
+            valid_n_experiences.append(n)
+    
+    if n_experiences not in valid_n_experiences:
+        old_n_experiences = n_experiences
+        # Find closest valid value
+        n_experiences = min(valid_n_experiences, 
+                           key=lambda x: abs(x - old_n_experiences))
+        print(f"Warning: {num_classes} classes cannot be evenly split into "
+              f"{old_n_experiences} experiences.")
+        print(f"Valid options: {valid_n_experiences}")
+        print(f"Using closest valid n_experiences instead: {n_experiences}")
+    
+    # Create benchmark
+    benchmark = dataset_benchmark(
+        [train_dataset],
+        [test_dataset],
+        n_experiences=n_experiences,
+        task_labels=False,
+        shuffle=True,
+        seed=seed,
+        class_ids_from_zero_in_each_exp=False
+    )
+    
+    # Create info dictionary
+    info = {
+        'num_classes': num_classes,
+        'num_samples': len(dataset),
+        'num_train': len(train_indices),
+        'num_test': len(test_indices),
+        'image_size': image_size,
+        'channels': 1,  # Grayscale IR images
+        'input_size': image_size[0] * image_size[1],
+        'n_experiences': n_experiences,
+        'class_names': dataset.idx_to_class,
+        'data_type': 'cropdata' if use_cropdata else 'rawdata'
+    }
+    
+    return benchmark, info
+
+
+def create_smarteye_controlled_benchmark(
+    subset_config: 'DatasetSubsetConfig',
+    root_dir: str = "/Users/calebcho/data/face_dataset",
+    use_cropdata: bool = True,
+    image_size: Tuple[int, int] = (112, 112),
+    test_split: float = 0.2
+):
+    """Create SmartEye benchmark with specific subset configuration."""
+    # Similar to create_lfw_controlled_benchmark but for SmartEye dataset
+    # This allows using the subset configuration system
+    
+    # For now, just use the standard benchmark creation
+    # You can extend this to support subset configurations if needed
+    return create_smarteye_benchmark(
+        root_dir=root_dir,
+        use_cropdata=use_cropdata,
+        n_experiences=subset_config.n_experiences or 5,
+        image_size=image_size,
+        test_split=test_split,
+        seed=subset_config.seed
+    )
+
+
+# Register the dataset name
+SMARTEYE_DATASETS = {
+    'smarteye_crop': {
+        'use_cropdata': True,
+        'min_samples_per_class': 10
+    },
+    'smarteye_raw': {
+        'use_cropdata': False,
+        'min_samples_per_class': 10
+    }
+}
+
+
+def get_smarteye_config(dataset_name: str) -> Dict[str, Any]:
+    """Get configuration for a SmartEye dataset variant."""
+    if dataset_name not in SMARTEYE_DATASETS:
+        raise ValueError(f"Unknown SmartEye dataset: {dataset_name}")
+    return SMARTEYE_DATASETS[dataset_name]
