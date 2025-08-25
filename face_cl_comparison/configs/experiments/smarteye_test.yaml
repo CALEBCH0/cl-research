@@ -42,7 +42,8 @@ fixed:
     name: smarteye_crop
     is_predefined: true
     path: /home/dylee/data/data_fid/FaceID/ARM  # Custom dataset path
-    n_experiences: 5  # Will be adjusted based on available classes
+    # ⚠️  n_experiences: FIXED AT 17 (1 identity per experience for true CL)
+    # ⚠️  Specifying n_experiences will be ignored - hardcoded for proper continual learning
     test_split: 0.2
     # Image size will be auto-adjusted to 112x112 for face models
     

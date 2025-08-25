@@ -86,7 +86,7 @@ class SmartEyeFaceDataset(Dataset):
 def create_smarteye_benchmark(
     root_dir: str = "/Users/calebcho/data/face_dataset",
     use_cropdata: bool = True,
-    n_experiences: int = 5,
+    n_experiences: int = 17,  # Default: 1 identity per experience (ideal for CL)
     image_size: Tuple[int, int] = (112, 112),
     test_split: float = 0.2,
     seed: int = 42,
@@ -95,17 +95,21 @@ def create_smarteye_benchmark(
     """
     Create an Avalanche benchmark from SmartEye face dataset.
     
+    ⚠️  IMPORTANT: SmartEye dataset is optimized for continual learning research.
+    The n_experiences parameter is FIXED at 17 (1 identity per experience) to ensure
+    proper continual learning evaluation. Other values will be ignored.
+    
     Args:
         root_dir: Path to face_dataset directory
         use_cropdata: If True, use cropdata; if False, use rawdata
-        n_experiences: Number of experiences to split classes into
+        n_experiences: FIXED at 17 experiences (parameter ignored for compatibility)
         image_size: Target image size
         test_split: Fraction of data to use for testing
         seed: Random seed
         min_samples_per_class: Minimum samples required per class
         
     Returns:
-        benchmark: Avalanche benchmark
+        benchmark: Avalanche benchmark with 17 experiences (1 identity each)
         info: Dictionary with dataset information
     """
     # Set random seed

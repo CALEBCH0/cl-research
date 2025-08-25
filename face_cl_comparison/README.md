@@ -10,6 +10,7 @@ A flexible framework for comparing continual learning strategies on face recogni
   - Olivetti Faces (40 identities) - Quick testing
   - LFW - Labeled Faces in the Wild (158+ identities) - Real-world conditions
   - Custom LFW subsets (e.g., lfw_50, lfw_100, lfw_200)
+  - SmartEye IR Face Dataset (17 identities) - **Fixed at 17 experiences for true continual learning**
 - **Custom Backbone Models**: Support for importing face recognition models from `backbones/` directory
   - DWSeesawFaceV2
   - GhostFaceNetV2
@@ -104,6 +105,36 @@ Choose based on your quality vs. scale needs:
 - Windows: `C:\Users\{username}\scikit_learn_data\lfw_home\`
 
 The resize issue with sklearn's `fetch_lfw_people` has been fixed - it now properly accepts resize as a float ratio.
+
+### SmartEye IR Face Dataset
+
+The SmartEye dataset provides IR (infrared) face images collected from controlled conditions:
+
+- **17 identities** with varying sample sizes (250-814 images per identity)
+- **7,105 total images** from cropped face data (388×446 pixels)
+- **Grayscale IR format** - ideal for face recognition research
+- **Controlled conditions** - consistent lighting and pose
+
+**⚠️ Important: SmartEye Dataset Constraints**
+
+The SmartEye dataset is **optimized for continual learning research** and has the following fixed configuration:
+
+- **n_experiences: 17 ONLY** (1 identity per experience)
+- **Cannot be changed** - other values will be ignored
+- **True continual learning**: Sequential learning of identities 001 → 002 → ... → 019
+- **Path configurable**: Set custom dataset path in config files
+
+```yaml
+# SmartEye configuration example
+dataset:
+  name: smarteye_crop
+  is_predefined: true
+  path: /path/to/your/smarteye/dataset  # Custom path
+  # n_experiences: 17 (fixed - do not specify)
+  test_split: 0.2
+```
+
+This setup ensures **realistic continual learning evaluation** where models must learn new identities while retaining knowledge of previously learned ones.
 
 ## Flexible Plugin System
 

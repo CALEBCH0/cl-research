@@ -216,7 +216,7 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
                 config = get_smarteye_config(dataset_config['name'])
                 return create_smarteye_benchmark(
                     root_dir=root_dir,
-                    n_experiences=dataset_config.get('n_experiences', 5),
+                    n_experiences=dataset_config.get('n_experiences', 17),  # CL default
                     use_cropdata=config['use_cropdata'],
                     image_size=tuple(dataset_config.get('image_size', [112, 112])),
                     seed=dataset_config.get('seed', 42),
@@ -226,7 +226,7 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
                 # Default SmartEye config
                 return create_smarteye_benchmark(
                     root_dir=root_dir,
-                    n_experiences=dataset_config.get('n_experiences', 5),
+                    n_experiences=dataset_config.get('n_experiences', 17),  # CL default
                     use_cropdata=True,
                     image_size=tuple(dataset_config.get('image_size', [112, 112])),
                     seed=dataset_config.get('seed', 42)

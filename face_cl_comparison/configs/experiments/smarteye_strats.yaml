@@ -59,7 +59,8 @@ fixed:
     name: smarteye_crop
     is_predefined: true
     path: /home/dylee/data/data_fid/FaceID/ARM
-    n_experiences: 5  # 5 experiences, ~3-4 identities each
+    # ⚠️  n_experiences: FIXED AT 17 (1 identity per experience)
+    # ⚠️  DO NOT SPECIFY n_experiences - it's hardcoded for proper CL
     test_split: 0.2
     
   # Training configuration optimized for face recognition
