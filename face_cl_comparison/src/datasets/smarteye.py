@@ -6,8 +6,8 @@ import numpy as np
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-from avalanche.benchmarks.generators import dataset_benchmark
-from avalanche.benchmarks.utils import AvalancheDataset
+from avalanche.benchmarks import nc_benchmark
+from avalanche.benchmarks.utils import as_classification_dataset
 from collections import defaultdict
 
 
@@ -155,32 +155,59 @@ def create_smarteye_benchmark(
     
     num_classes = len(dataset.class_to_idx)
     
-    # Create train/test split
-    indices = torch.randperm(len(dataset))
-    n_test = int(len(dataset) * test_split)
-    test_indices = indices[:n_test]
-    train_indices = indices[n_test:]
+    # Convert dataset to tensors
+    all_images = []
+    for sample_path in dataset.samples:
+        # Load image as grayscale (IR images)
+        image = Image.open(sample_path).convert('L')
+        # Resize to target size
+        image = image.resize(dataset.image_size, Image.BILINEAR)
+        # Convert to tensor and normalize to [0, 1]
+        image = np.array(image, dtype=np.float32) / 255.0
+        image = torch.FloatTensor(image).unsqueeze(0)  # Add channel dimension
+        all_images.append(image)
     
-    # Create train and test datasets
-    train_dataset = torch.utils.data.Subset(dataset, train_indices)
-    test_dataset = torch.utils.data.Subset(dataset, test_indices)
+    X = torch.stack(all_images)  # Shape: (n_samples, 1, height, width)
+    y = dataset.labels  # Shape: (n_samples,)
     
-    # Get labels for splitting into experiences
-    train_labels = dataset.labels[train_indices]
-    test_labels = dataset.labels[test_indices]
+    # Create train/test split maintaining class balance
+    train_indices = []
+    test_indices = []
     
-    # Create Avalanche datasets
-    train_dataset = AvalancheDataset(
-        train_dataset,
-        targets=train_labels,
-        task_labels=torch.zeros_like(train_labels)
-    )
+    for class_id in range(num_classes):
+        class_indices = torch.where(y == class_id)[0].numpy()
+        n_class_samples = len(class_indices)
+        
+        # Shuffle indices for this class
+        rng = np.random.RandomState(seed + class_id)
+        rng.shuffle(class_indices)
+        
+        # Split
+        n_train = int((1 - test_split) * n_class_samples)
+        train_indices.extend(class_indices[:n_train])
+        test_indices.extend(class_indices[n_train:])
     
-    test_dataset = AvalancheDataset(
-        test_dataset,
-        targets=test_labels,
-        task_labels=torch.zeros_like(test_labels)
-    )
+    # Create train/test tensors
+    train_indices = torch.tensor(train_indices)
+    test_indices = torch.tensor(test_indices)
+    
+    X_train = X[train_indices]
+    y_train = y[train_indices]
+    X_test = X[test_indices]
+    y_test = y[test_indices]
+    
+    # Create TensorDatasets
+    from torch.utils.data import TensorDataset
+    train_dataset = TensorDataset(X_train, y_train)
+    test_dataset = TensorDataset(X_test, y_test)
+    
+    # Add targets attribute for Avalanche
+    train_dataset.targets = y_train.tolist()
+    test_dataset.targets = y_test.tolist()
+    
+    # Convert to classification datasets
+    train_dataset = as_classification_dataset(train_dataset)
+    test_dataset = as_classification_dataset(test_dataset)
     
     # Find valid n_experiences
     valid_n_experiences = []
@@ -198,10 +225,10 @@ def create_smarteye_benchmark(
         print(f"Valid options: {valid_n_experiences}")
         print(f"Using closest valid n_experiences instead: {n_experiences}")
     
-    # Create benchmark
-    benchmark = dataset_benchmark(
-        [train_dataset],
-        [test_dataset],
+    # Create benchmark using nc_benchmark (New Classes benchmark)
+    benchmark = nc_benchmark(
+        train_dataset=train_dataset,
+        test_dataset=test_dataset,
         n_experiences=n_experiences,
         task_labels=False,
         shuffle=True,
@@ -212,7 +239,7 @@ def create_smarteye_benchmark(
     # Create info dictionary
     info = {
         'num_classes': num_classes,
-        'num_samples': len(dataset),
+        'num_samples': len(X),
         'num_train': len(train_indices),
         'num_test': len(test_indices),
         'image_size': image_size,
