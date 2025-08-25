@@ -58,6 +58,17 @@ class SmartEyeFaceDataset(Dataset):
                 
         self.labels = torch.LongTensor(self.labels)
         print(f"Loaded {len(self.samples)} images from {len(identity_folders)} identities")
+    
+    # Print samples per identity for debugging
+    samples_per_identity = {}
+    for idx, identity_folder in enumerate(identity_folders):
+        identity_name = identity_folder.name
+        count = sum(1 for label in self.labels if label == idx)
+        samples_per_identity[identity_name] = count
+        
+    print("Samples per identity:")
+    for identity, count in sorted(samples_per_identity.items()):
+        print(f"  {identity}: {count} images")
         
     def __len__(self):
         return len(self.samples)
@@ -235,6 +246,21 @@ def create_smarteye_benchmark(
         seed=seed,
         class_ids_from_zero_in_each_exp=False
     )
+    
+    # Print train/test split details for debugging
+    print(f"\nTrain/Test Split Details:")
+    print(f"  Total samples: {len(X)}")
+    print(f"  Train samples: {len(train_indices)} ({len(train_indices)/len(X)*100:.1f}%)")
+    print(f"  Test samples: {len(test_indices)} ({len(test_indices)/len(X)*100:.1f}%)")
+    
+    # Check train/test split per class
+    print(f"\nTrain/Test split per identity:")
+    for class_id in range(num_classes):
+        class_name = dataset.idx_to_class[class_id]
+        train_count = sum(1 for idx in train_indices if y[idx] == class_id)
+        test_count = sum(1 for idx in test_indices if y[idx] == class_id)
+        total_count = train_count + test_count
+        print(f"  {class_name}: {train_count} train, {test_count} test (total: {total_count})")
     
     # Create info dictionary
     info = {

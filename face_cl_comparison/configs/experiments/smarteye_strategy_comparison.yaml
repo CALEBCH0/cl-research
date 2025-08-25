@@ -5,6 +5,11 @@ description: Compare SLDA vs iCaRL strategies on SmartEye IR dataset with Effici
 vary:
   # Compare different continual learning strategies
   strategy:
+    # Naive - Standard fine-tuning (no continual learning)
+    - name: naive
+      type: naive
+      params: {}
+        
     # SLDA - Streaming Linear Discriminant Analysis
     - name: slda
       type: slda

@@ -1,0 +1,50 @@
+# Harder SmartEye task configuration  
+name: smarteye_harder
+description: More challenging SmartEye face recognition task
+
+vary:
+  strategy:
+    - name: naive
+      type: naive
+      params: {}
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+    - name: icarl
+      type: icarl
+      params:
+        memory_size: 500  # Reduced memory to make it harder
+        fixed_memory: true
+
+fixed:
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  strategy:
+    name: slda
+    type: slda
+    params: {}
+      
+  dataset:
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    n_experiences: 17  # One class per experience (hardest)
+    test_split: 0.5    # Larger test set for better evaluation
+    min_samples_per_class: 50  # Require minimum samples
+    
+  training:
+    epochs_per_experience: 1  # Less training time
+    batch_size: 16           # Smaller batches
+    lr: 0.0001              # Lower learning rate
+    optimizer: adam
+    
+  experiment:
+    seeds: [42]
+    device: cuda
+    save_checkpoints: false
