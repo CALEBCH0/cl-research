@@ -1,0 +1,95 @@
+# Comprehensive continual learning strategy comparison on SmartEye IR face dataset
+name: smarteye_strats
+description: Compare SLDA vs Replay vs combined approaches on SmartEye with EfficientNet
+
+vary:
+  strategy:
+    # SLDA - Pure embedding-based approach (no replay)
+    - name: slda_pure
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+        
+    # Replay - Pure replay-based approach (no embedding tricks)
+    - name: replay_pure
+      type: replay
+      params:
+        mem_size: 1000  # Store 1000 exemplars
+        
+    # SLDA with Replay - Hybrid approach combining both
+    - name: slda_replay
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500  # Smaller memory since SLDA helps
+            
+    # Additional baselines for comparison
+    - name: naive
+      type: naive
+      params: {}
+      
+    - name: ewc
+      type: ewc
+      params:
+        ewc_lambda: 0.4
+        mode: online
+        
+    - name: icarl
+      type: icarl
+      params:
+        memory_size: 1000
+        fixed_memory: true
+
+fixed:
+  # Fixed model - EfficientNet B0 with pre-trained weights
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  # Placeholder strategy (overridden by vary)
+  strategy:
+    name: slda
+    type: slda
+    params: {}
+      
+  # Fixed dataset - SmartEye IR faces with proper continual learning setup
+  dataset:
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    n_experiences: 5  # 5 experiences, ~3-4 identities each
+    test_split: 0.2
+    
+  # Training configuration optimized for face recognition
+  training:
+    epochs_per_experience: 3
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]
+    device: cuda
+    save_checkpoints: false
+    
+# Expected Performance Ranking (best to worst):
+# 1. SLDA Pure: ~99% (excellent for face recognition)
+# 2. SLDA + Replay: ~98% (hybrid approach)  
+# 3. iCaRL: ~96% (exemplar-based with prototypes)
+# 4. Replay Pure: ~85-90% (replay helps but no embedding optimization)
+# 5. EWC: ~70-80% (regularization approach)
+# 6. Naive: ~6% (catastrophic forgetting)
+#
+# This comparison will show:
+# - Pure embedding methods (SLDA) excel at face recognition CL
+# - Replay methods provide good baseline performance
+# - Hybrid approaches can combine benefits
+# - Regularization methods (EWC) struggle with many tasks

@@ -211,7 +211,6 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
             
             # Get custom path if specified
             root_dir = dataset_config.get('path', '/Users/calebcho/data/face_dataset')
-            print(f"Using SmartEye dataset path: {root_dir}")
             
             if dataset_config['name'] in ['smarteye_crop', 'smarteye_raw']:
                 config = get_smarteye_config(dataset_config['name'])
