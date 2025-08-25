@@ -480,7 +480,11 @@ def main():
                 
                 print(f"  → {run_config['name']}: {mean_acc:.3f} ± {std_acc:.3f}")
     
-    # Save results
+    # Save results and show completion summary
+    total_runs = len(runs)
+    successful_runs = len(all_results)
+    failed_runs = total_runs - successful_runs
+    
     if all_results:
         df = pd.DataFrame(all_results)
         df.to_csv(output_dir / 'results.csv', index=False)
@@ -502,12 +506,18 @@ def main():
                 print(f"{row['run_name']:<{tab_size}} {row['strategy']:<{tab_size}} {row['model']:<{tab_size}} {row['dataset_name']:<{tab_size}} "
                       f"{row['accuracy_mean']:.3f} ± {row['accuracy_std']:.3f}")
         
-        print(f"\nResults saved to: {output_dir}")
+        print(f"\n{'='*90}")
+        print(f"EXPERIMENT COMPLETE: {successful_runs}/{total_runs} runs successful")
+        if failed_runs > 0:
+            print(f"⚠️  {failed_runs} runs failed - check output above for error details")
+        print(f"Results saved to: {output_dir}")
         
         if stop_requested:
             print("\nExperiment stopped by user request.")
     else:
-        print("\nNo results to save.")
+        print(f"\n{'='*90}")
+        print(f"EXPERIMENT FAILED: 0/{total_runs} runs successful")
+        print("❌ All runs failed - check error messages above")
 
 
 if __name__ == '__main__':

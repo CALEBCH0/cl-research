@@ -17,16 +17,11 @@ vary:
       params:
         mem_size: 1000  # Store 1000 exemplars
         
-    # SLDA with Replay - Hybrid approach combining both
-    - name: slda_replay
-      type: slda
+    # GDumb - Alternative replay-based approach
+    - name: gdumb
+      type: gdumb
       params:
-        shrinkage_param: 0.0001
-        streaming_update_sigma: true
-      plugins:
-        - name: replay
-          params:
-            mem_size: 500  # Smaller memory since SLDA helps
+        mem_size: 1000
             
     # Additional baselines for comparison
     - name: naive

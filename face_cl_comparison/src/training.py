@@ -886,9 +886,12 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
         )
     
     # Training loop
+    # Get number of experiences (handle both benchmark types)
+    n_experiences = getattr(benchmark, 'n_experiences', len(benchmark.train_stream))
+    
     for i, train_exp in enumerate(benchmark.train_stream):
         if verbose:
-            print(f"\n>>> Training Experience {i+1}/{benchmark.n_experiences}")
+            print(f"\n>>> Training Experience {i+1}/{n_experiences}")
         strategy.train(train_exp)
     
     # Final evaluation
@@ -903,16 +906,16 @@ def run_training(benchmark_name='fmnist', strategy_name='naive', model_type='mlp
             if 'Top1_Acc' in k:
                 print(f"  {k}: {eval_results[k]:.4f}")
     
-    # Extract accuracies
+    # Extract accuracies (use n_experiences from above)
     accuracies = []
-    for i in range(benchmark.n_experiences):
+    for i in range(n_experiences):
         key = f'Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp{i:03d}'
         if key in eval_results:
             accuracies.append(eval_results[key])
     
     # If no accuracies found with Task000, try without task ID
     if not accuracies:
-        for i in range(benchmark.n_experiences):
+        for i in range(n_experiences):
             key = f'Top1_Acc_Exp/eval_phase/test_stream/Exp{i:03d}'
             if key in eval_results:
                 accuracies.append(eval_results[key])
