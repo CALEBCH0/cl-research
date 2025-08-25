@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import Dataset
 from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
+from avalanche.benchmarks.generators import dataset_benchmark
 from collections import defaultdict
 
 
@@ -218,19 +219,78 @@ def create_smarteye_benchmark(
         n_experiences = 1
         
     print(f"Creating {n_experiences} experiences from {num_classes} classes")
-    if num_classes % n_experiences != 0:
-        print(f"Note: Uneven split - some experiences will have more classes than others")
     
-    # Create benchmark using nc_benchmark (New Classes benchmark)
-    benchmark = nc_benchmark(
-        train_dataset=train_dataset,
-        test_dataset=test_dataset,
-        n_experiences=n_experiences,
-        task_labels=False,
-        shuffle=True,
-        seed=seed,
-        class_ids_from_zero_in_each_exp=False
-    )
+    # Create benchmark with manual class splitting to handle uneven divisions
+    if num_classes % n_experiences == 0:
+        # Even split - use nc_benchmark
+        benchmark = nc_benchmark(
+            train_dataset=train_dataset,
+            test_dataset=test_dataset,
+            n_experiences=n_experiences,
+            task_labels=False,
+            shuffle=True,
+            seed=seed,
+            class_ids_from_zero_in_each_exp=False
+        )
+    else:
+        # Uneven split - use ni_benchmark with manual experience creation
+        print(f"Note: Uneven split - some experiences will have more classes than others")
+        
+        # Create class-to-experience mapping
+        classes_per_exp = num_classes // n_experiences
+        extra_classes = num_classes % n_experiences
+        
+        # Distribute classes across experiences
+        experience_class_lists = []
+        current_class = 0
+        
+        for exp_id in range(n_experiences):
+            # Some experiences get an extra class
+            exp_size = classes_per_exp + (1 if exp_id < extra_classes else 0)
+            exp_classes = list(range(current_class, current_class + exp_size))
+            experience_class_lists.append(exp_classes)
+            current_class += exp_size
+            
+        print(f"Class distribution: {[len(exp_classes) for exp_classes in experience_class_lists]}")
+        
+        # Create experiences manually
+        train_experiences = []
+        test_experiences = []
+        
+        for exp_classes in experience_class_lists:
+            # Filter train data for this experience
+            train_mask = torch.tensor([label.item() in exp_classes for label in y_train])
+            exp_train_X = X_train[train_mask]
+            exp_train_y = y_train[train_mask]
+            
+            # Filter test data for this experience  
+            test_mask = torch.tensor([label.item() in exp_classes for label in y_test])
+            exp_test_X = X_test[test_mask]
+            exp_test_y = y_test[test_mask]
+            
+            # Create experience datasets
+            from torch.utils.data import TensorDataset
+            exp_train_dataset = TensorDataset(exp_train_X, exp_train_y)
+            exp_test_dataset = TensorDataset(exp_test_X, exp_test_y)
+            
+            # Add targets attribute
+            exp_train_dataset.targets = exp_train_y.tolist()
+            exp_test_dataset.targets = exp_test_y.tolist()
+            
+            # Convert to classification datasets
+            exp_train_dataset = as_classification_dataset(exp_train_dataset)
+            exp_test_dataset = as_classification_dataset(exp_test_dataset)
+            
+            train_experiences.append(exp_train_dataset)
+            test_experiences.append(exp_test_dataset)
+        
+        # Create benchmark from experience list
+        from avalanche.benchmarks.generators import dataset_benchmark
+        benchmark = dataset_benchmark(
+            train_datasets=train_experiences,
+            test_datasets=test_experiences,
+            task_labels=False
+        )
     
     print(f"Train/test split: {len(train_indices)} train, {len(test_indices)} test")
     
