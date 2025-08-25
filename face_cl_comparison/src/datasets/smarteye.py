@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import Dataset
 from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
-from avalanche.benchmarks.generators import dataset_benchmark
+from avalanche.benchmarks.scenarios.dataset_scenario import benchmark_from_datasets
 from collections import defaultdict
 
 
@@ -285,8 +285,7 @@ def create_smarteye_benchmark(
             test_experiences.append(exp_test_dataset)
         
         # Create benchmark from experience list
-        from avalanche.benchmarks.generators import dataset_benchmark
-        benchmark = dataset_benchmark(
+        benchmark = benchmark_from_datasets(
             train_datasets=train_experiences,
             test_datasets=test_experiences,
             task_labels=False
