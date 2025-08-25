@@ -286,9 +286,8 @@ def create_smarteye_benchmark(
         
         # Create benchmark from experience list
         benchmark = benchmark_from_datasets(
-            train_datasets=train_experiences,
-            test_datasets=test_experiences,
-            task_labels=False
+            train=train_experiences,
+            test=test_experiences
         )
     
     print(f"Train/test split: {len(train_indices)} train, {len(test_indices)} test")
