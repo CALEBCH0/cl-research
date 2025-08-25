@@ -58,17 +58,17 @@ class SmartEyeFaceDataset(Dataset):
                 
         self.labels = torch.LongTensor(self.labels)
         print(f"Loaded {len(self.samples)} images from {len(identity_folders)} identities")
-    
-    # Print samples per identity for debugging
-    samples_per_identity = {}
-    for idx, identity_folder in enumerate(identity_folders):
-        identity_name = identity_folder.name
-        count = sum(1 for label in self.labels if label == idx)
-        samples_per_identity[identity_name] = count
         
-    print("Samples per identity:")
-    for identity, count in sorted(samples_per_identity.items()):
-        print(f"  {identity}: {count} images")
+        # Print samples per identity for debugging
+        samples_per_identity = {}
+        for idx, identity_folder in enumerate(identity_folders):
+            identity_name = identity_folder.name
+            count = sum(1 for label in self.labels if label == idx)
+            samples_per_identity[identity_name] = count
+            
+        print("Samples per identity:")
+        for identity, count in sorted(samples_per_identity.items()):
+            print(f"  {identity}: {count} images")
         
     def __len__(self):
         return len(self.samples)
@@ -220,21 +220,17 @@ def create_smarteye_benchmark(
     train_dataset = as_classification_dataset(train_dataset)
     test_dataset = as_classification_dataset(test_dataset)
     
-    # Find valid n_experiences
-    valid_n_experiences = []
-    for n in range(1, num_classes + 1):
-        if num_classes % n == 0:
-            valid_n_experiences.append(n)
-    
-    if n_experiences not in valid_n_experiences:
-        old_n_experiences = n_experiences
-        # Find closest valid value
-        n_experiences = min(valid_n_experiences, 
-                           key=lambda x: abs(x - old_n_experiences))
-        print(f"Warning: {num_classes} classes cannot be evenly split into "
-              f"{old_n_experiences} experiences.")
-        print(f"Valid options: {valid_n_experiences}")
-        print(f"Using closest valid n_experiences instead: {n_experiences}")
+    # Allow uneven splits for continual learning
+    if n_experiences > num_classes:
+        print(f"Warning: n_experiences ({n_experiences}) > num_classes ({num_classes})")
+        print(f"Setting n_experiences = num_classes = {num_classes}")
+        n_experiences = num_classes
+    elif n_experiences < 1:
+        n_experiences = 1
+        
+    print(f"Creating {n_experiences} experiences from {num_classes} classes")
+    if num_classes % n_experiences != 0:
+        print(f"Note: Uneven split - some experiences will have more classes than others")
     
     # Create benchmark using nc_benchmark (New Classes benchmark)
     benchmark = nc_benchmark(

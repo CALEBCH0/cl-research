@@ -1,0 +1,45 @@
+# Moderate Continual Learning setup - 5 experiences with ~3-4 identities each
+name: smarteye_5exp_cl  
+description: Continual learning with 5 experiences (3-4 identities per experience)
+
+vary:
+  strategy:
+    - name: naive
+      type: naive
+      params: {}
+        
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+
+fixed:
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  strategy:
+    name: slda
+    type: slda  
+    params: {}
+      
+  dataset:
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    n_experiences: 5  # This should work since we have manual override
+    test_split: 0.2
+    
+  training:
+    epochs_per_experience: 2
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  experiment:
+    seeds: [42]
+    device: cuda
+    save_checkpoints: false
