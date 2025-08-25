@@ -46,7 +46,7 @@ fixed:
   dataset:
     name: smarteye_crop
     is_predefined: true
-    path: /Users/calebcho/data/face_dataset  # Custom dataset path
+    path: /home/dylee/data/data_fid/FaceID/ARM  # Custom dataset path
     n_experiences: 5  # Will be adjusted based on 17 identities
     test_split: 0.2
     # Image size will be auto-adjusted to 64x64 for EfficientNet
