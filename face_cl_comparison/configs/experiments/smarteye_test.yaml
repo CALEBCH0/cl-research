@@ -41,6 +41,7 @@ fixed:
   dataset:
     name: smarteye_crop
     is_predefined: true
+    path: /Users/calebcho/data/face_dataset  # Custom dataset path
     n_experiences: 5  # Will be adjusted based on available classes
     test_split: 0.2
     # Image size will be auto-adjusted to 112x112 for face models

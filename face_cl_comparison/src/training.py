@@ -276,6 +276,7 @@ def set_benchmark(benchmark_name, experiences=5, seed=42, subset_config=None):
         elif benchmark_name in ['smarteye_crop', 'smarteye_raw']:
             config = get_smarteye_config(benchmark_name)
             benchmark, dataset_info = create_smarteye_benchmark(
+                root_dir='/Users/calebcho/data/face_dataset',  # Default path
                 n_experiences=experiences,
                 use_cropdata=config['use_cropdata'],
                 image_size=(112, 112),
@@ -285,6 +286,7 @@ def set_benchmark(benchmark_name, experiences=5, seed=42, subset_config=None):
         else:
             # Default to cropdata
             benchmark, dataset_info = create_smarteye_benchmark(
+                root_dir='/Users/calebcho/data/face_dataset',  # Default path
                 n_experiences=experiences,
                 use_cropdata=True,
                 image_size=(112, 112),
