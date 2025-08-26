@@ -149,6 +149,7 @@ def create_strategy_v2(
         shrinkage_param = strategy_params.pop('shrinkage_param', 1e-4)
         streaming_update_sigma = strategy_params.pop('streaming_update_sigma', True)
         
+        
         slda_kwargs = {
             'slda_model': feature_extractor,
             'criterion': criterion,
@@ -264,8 +265,21 @@ def _create_feature_extractor(model: nn.Module, model_type: str, device: Union[s
                 # Handle variations in model naming
                 self.features = actual_model
                 
+                # Special handling for ghostface models
+                if 'ghostface' in model_type:
+                    if hasattr(actual_model, 'output_layer') and hasattr(actual_model.output_layer, 'linear'):
+                        if isinstance(actual_model.output_layer.linear, nn.Linear):
+                            self.num_features = actual_model.output_layer.linear.out_features
+                        else:
+                            # nn.Identity case - uses emb size
+                            if hasattr(actual_model.output_layer, 'conv'):
+                                self.num_features = actual_model.output_layer.conv.out_channels
+                            else:
+                                self.num_features = 512  # Default fallback
+                    else:
+                        self.num_features = 512
                 # Try to get the actual embedding size from the model
-                if hasattr(actual_model, 'linear') and hasattr(actual_model.linear, 'out_features'):
+                elif hasattr(actual_model, 'linear') and hasattr(actual_model.linear, 'out_features'):
                     # For DW_seesawFaceNetv2 and similar models with linear layer
                     self.num_features = actual_model.linear.out_features
                 elif hasattr(actual_model, 'embedding_size'):
@@ -310,7 +324,6 @@ def _create_feature_extractor(model: nn.Module, model_type: str, device: Union[s
                         self.features = model
                         self.num_features = benchmark_info.num_classes  # Guess based on output
             else:
-                print(f"DEBUG: model_type='{model_type}', available conditions: efficientnet, resnet, mobilenet, dwseesawfacev2, ghostfacenetv2, modified_mobilefacenet, dwseesaw, ghostface, mobilefacenet, modified_mobile, mlp, cnn")
                 raise ValueError(f"Unsupported model type for feature extraction: {model_type}")
         
         def _setup_efficientnet(self, model):
@@ -361,6 +374,10 @@ def _create_feature_extractor(model: nn.Module, model_type: str, device: Union[s
             return 1280  # Default
         
         def forward(self, x):
+            # Handle model-specific input size requirements
+            if hasattr(self, 'target_size') and self.target_size:
+                x = nn.functional.interpolate(x, size=self.target_size, mode='bilinear', align_corners=False)
+            
             if self.wrapper:
                 x = x.repeat(1, 3, 1, 1)
             
@@ -376,6 +393,22 @@ def _create_feature_extractor(model: nn.Module, model_type: str, device: Union[s
             return features
     
     feature_extractor = GenericFeatureExtractor(model, model_type)
+    
+    # Set target size for model-specific input requirements
+    # This allows models to handle their own resizing when dataset is fixed
+    if model_type == 'dwseesawfacev2' or 'dwseesaw' in model_type:
+        feature_extractor.target_size = (256, 256)
+    elif model_type == 'ghostfacenetv2' or 'ghostface' in model_type:
+        feature_extractor.target_size = (112, 112)
+    elif 'efficientnet' in model_type:
+        # EfficientNet typically uses 224x224
+        feature_extractor.target_size = (224, 224)
+    elif model_type == 'modified_mobilefacenet' or 'mobilefacenet' in model_type:
+        feature_extractor.target_size = (112, 112)
+    else:
+        # No specific size requirement - use dataset default
+        feature_extractor.target_size = None
+    
     return feature_extractor.to(device)
 
 

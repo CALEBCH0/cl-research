@@ -338,18 +338,30 @@ def main():
                         n_experiences = dataset_config['n_experiences']
                     
                     # Create cache key for modular dataset
-                    # Include image_size in cache key if it will be auto-adjusted
                     cache_params = dataset_config.get('params', {}).copy()
-                    if 'model_config' in run_config:
-                        from src.utils.model_utils import get_dataset_requirements_for_model
-                        model_reqs = get_dataset_requirements_for_model(run_config['model_config'])
-                        cache_params['image_size'] = model_reqs['image_size']
                     
-                    cache_key = (
-                        dataset_config['name'],
-                        n_experiences,
-                        frozenset(cache_params.items())
-                    )
+                    # For fixed datasets, create once with default size and let models handle resizing
+                    if fixed_dataset:
+                        # Use dataset config with default image size for caching
+                        # Remove any model-specific image_size to use dataset's default
+                        cache_params.pop('image_size', None)  # Remove if present
+                        cache_key = (
+                            dataset_config['name'],
+                            n_experiences,
+                            frozenset(cache_params.items())  # Original config without image_size
+                        )
+                    else:
+                        # Different datasets - include model requirements
+                        if 'model_config' in run_config:
+                            from src.utils.model_utils import get_dataset_requirements_for_model
+                            model_reqs = get_dataset_requirements_for_model(run_config['model_config'])
+                            cache_params['image_size'] = model_reqs['image_size']
+                        
+                        cache_key = (
+                            dataset_config['name'],
+                            n_experiences,
+                            frozenset(cache_params.items())
+                        )
                     
                     if cache_key in benchmark_cache:
                         cached_benchmark, cached_info = benchmark_cache[cache_key]
@@ -367,10 +379,12 @@ def main():
                                 full_dataset_config[key] = value
                         
                         # Auto-adjust dataset config based on model requirements
-                        if 'model_config' in run_config:
+                        if not fixed_dataset and 'model_config' in run_config:
+                            # Only apply model requirements if dataset is varying
                             full_dataset_config = merge_dataset_config_with_model_requirements(
                                 full_dataset_config, run_config['model_config']
                             )
+                        # For fixed datasets, use default image size - models will handle resizing
                         
                         cached_benchmark, cached_info = create_dataset_from_config(full_dataset_config)
                         benchmark_cache[cache_key] = (cached_benchmark, cached_info)
