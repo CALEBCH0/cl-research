@@ -259,8 +259,54 @@ def _create_feature_extractor(model: nn.Module, model_type: str, device: Union[s
             elif 'dwseesaw' in model_type or 'ghostface' in model_type or 'mobilefacenet' in model_type or 'modified_mobile' in model_type:
                 # Handle variations in model naming
                 self.features = actual_model
-                self.num_features = 512  # Default embedding size for face models
+                
+                # Try to get the actual embedding size from the model
+                if hasattr(actual_model, 'linear') and hasattr(actual_model.linear, 'out_features'):
+                    # For DW_seesawFaceNetv2 and similar models with linear layer
+                    self.num_features = actual_model.linear.out_features
+                elif hasattr(actual_model, 'embedding_size'):
+                    self.num_features = actual_model.embedding_size
+                elif hasattr(actual_model, 'num_features'):
+                    self.num_features = actual_model.num_features
+                elif hasattr(actual_model, 'features'):
+                    # Try to infer from the last layer
+                    if isinstance(actual_model.features, nn.Sequential):
+                        for module in reversed(list(actual_model.features)):
+                            if isinstance(module, nn.Linear):
+                                self.num_features = module.out_features
+                                break
+                        else:
+                            self.num_features = 512  # Default if can't find
+                    else:
+                        self.num_features = 512  # Default
+                else:
+                    # Default embedding size for face models
+                    self.num_features = 512
+            elif model_type in ['mlp', 'cnn']:
+                # For MLP and CNN models that have features/classifier split
+                if hasattr(model, 'features') and hasattr(model, 'classifier'):
+                    self.features = model.features
+                    # Get the output size from the classifier's input
+                    if isinstance(model.classifier, nn.Sequential):
+                        for module in model.classifier:
+                            if isinstance(module, nn.Linear):
+                                self.num_features = module.in_features
+                                break
+                    else:
+                        self.num_features = model.classifier.in_features
+                else:
+                    # For MLP without explicit feature/classifier split
+                    # Remove the last layer to get features
+                    if isinstance(model, nn.Sequential):
+                        self.features = nn.Sequential(*list(model.children())[:-1])
+                        last_layer = list(model.children())[-1]
+                        self.num_features = last_layer.in_features
+                    else:
+                        # Fallback: use the whole model as feature extractor
+                        self.features = model
+                        self.num_features = benchmark_info.num_classes  # Guess based on output
             else:
+                print(f"DEBUG: model_type='{model_type}', available conditions: efficientnet, resnet, mobilenet, dwseesawfacev2, ghostfacenetv2, modified_mobilefacenet, dwseesaw, ghostface, mobilefacenet, modified_mobile, mlp, cnn")
                 raise ValueError(f"Unsupported model type for feature extraction: {model_type}")
         
         def _setup_efficientnet(self, model):

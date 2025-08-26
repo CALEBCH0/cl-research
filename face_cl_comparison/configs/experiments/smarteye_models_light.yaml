@@ -1,0 +1,88 @@
+# Lightweight model comparison on SmartEye IR face dataset with SLDA
+# Reduced model set and batch size to avoid CUDA OOM
+name: smarteye_models_light
+description: Compare lightweight models on SmartEye IR faces using SLDA (reduced memory usage)
+
+vary:
+  model:
+    # Standard Models
+    # ===============
+    
+    # EfficientNet B0 only (smallest variant)
+    - name: efficientnet_b0
+      type: efficientnet_b0
+      params:
+        pretrained: true
+        
+    # Custom Face Recognition Backbones (Lightweight variants)
+    # ========================================================
+    
+    # GhostFaceNetV2 - Small variant only
+    - name: ghostface_112_small
+      type: ghostfacenetv2
+      params:
+        image_size: 112
+        num_features: 256
+        width: 0.5  # Smaller model
+        
+    # Modified MobileFaceNet - Mobile-optimized
+    - name: mobilefacenet
+      type: modified_mobilefacenet
+      params: {}
+        
+    # Classic Models (for baseline comparison)
+    # ========================================
+    
+    # Skip MLP/CNN for now - focus on face recognition models
+    # - name: mlp
+    #   type: mlp
+    #   params:
+    #     hidden_size: 256
+    #     hidden_layers: 2
+    #     
+    # - name: cnn
+    #   type: cnn
+    #   params: {}
+
+fixed:
+  # Fixed model (placeholder - will be overridden by vary)
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  # Fixed strategy - SLDA
+  strategy:
+    name: slda
+    type: slda
+    params:
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+  # Fixed dataset - SmartEye IR faces
+  dataset:
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    # n_experiences: FIXED AT 17 (1 identity per experience)
+    test_split: 0.2
+    
+  # Training configuration with reduced batch size
+  training:
+    epochs_per_experience: 1  # SLDA typically uses 1 epoch
+    batch_size: 8  # Further reduced for memory constraints
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed for faster testing
+    device: cuda
+    save_checkpoints: false
+    
+# Notes:
+# - Removed memory-intensive models (DWSeesawFaceV2, large EfficientNets)
+# - Reduced batch size to 8 to avoid CUDA OOM
+# - Single seed for faster testing
+# - Focus on lightweight models that should still work well

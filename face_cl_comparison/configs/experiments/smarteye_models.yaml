@@ -1,0 +1,125 @@
+# Comprehensive model comparison on SmartEye IR face dataset with SLDA
+name: smarteye_models
+description: Compare all available models (standard + custom backbones) on SmartEye IR faces using SLDA
+
+vary:
+  model:
+    # Standard Models
+    # ===============
+    
+    # EfficientNet variants (pretrained on ImageNet)
+    - name: efficientnet_b0
+      type: efficientnet_b0
+      params:
+        pretrained: true
+        
+    - name: efficientnet_b1
+      type: efficientnet_b1
+      params:
+        pretrained: true
+        
+    - name: efficientnet_b2
+      type: efficientnet_b2
+      params:
+        pretrained: true
+        
+    # Custom Face Recognition Backbones
+    # =================================
+    
+    # DWSeesawFaceV2 - Efficient face recognition with seesaw architecture
+    - name: dwseesaw_512
+      type: dwseesawfacev2
+      params:
+        embedding_size: 512
+        
+    - name: dwseesaw_256
+      type: dwseesawfacev2
+      params:
+        embedding_size: 256
+        
+    # GhostFaceNetV2 - Lightweight model using ghost modules
+    - name: ghostface_112
+      type: ghostfacenetv2
+      params:
+        image_size: 112  # Matches SmartEye default
+        num_features: 512
+        width: 1.0
+        
+    - name: ghostface_112_small
+      type: ghostfacenetv2
+      params:
+        image_size: 112
+        num_features: 256
+        width: 0.5  # Smaller model
+        
+    # Modified MobileFaceNet - Mobile-optimized face recognition
+    - name: mobilefacenet
+      type: modified_mobilefacenet
+      params: {}
+        
+    # Classic Models (for baseline comparison)
+    # ========================================
+    
+    # Simple MLP baseline
+    - name: mlp
+      type: mlp
+      params:
+        hidden_size: 512
+        hidden_layers: 2
+        
+    # Basic CNN
+    - name: cnn
+      type: cnn
+      params: {}
+
+fixed:
+  # Fixed model (placeholder - will be overridden by vary)
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  # Fixed strategy - SLDA (excellent for face recognition)
+  strategy:
+    name: slda
+    type: slda
+    params:
+      shrinkage_param: 0.0001
+      streaming_update_sigma: true
+      
+  # Fixed dataset - SmartEye IR faces
+  dataset:
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    # n_experiences: FIXED AT 17 (1 identity per experience for true CL)
+    test_split: 0.2
+    
+  # Training configuration optimized for SLDA
+  training:
+    epochs_per_experience: 1  # SLDA typically uses 1 epoch
+    batch_size: 16  # Reduced to avoid CUDA OOM with large models
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42, 123, 456]  # Multiple seeds for statistical significance
+    device: cuda
+    save_checkpoints: false
+    
+# Expected Performance Ranking (best to worst):
+# 1. GhostFaceNetV2 - Designed for face recognition, should excel on IR faces
+# 2. DWSeesawFaceV2 - Another specialized face model
+# 3. Modified MobileFaceNet - Mobile face recognition model
+# 4. EfficientNet B0/B1/B2 - General purpose but powerful
+# 5. Simple CNN - Basic but might work decently
+# 6. MLP - Baseline, likely poor on image data
+
+# Notes:
+# - Custom face models output normalized embeddings ideal for SLDA
+# - EfficientNets provide strong general-purpose features
+# - MLP/CNN included as baselines to show improvement
+# - All models will be tested with identical SLDA settings
+# - SmartEye's controlled IR images should favor specialized face models

@@ -4,41 +4,52 @@ description: Compare SLDA vs Replay vs combined approaches on SmartEye with Effi
 
 vary:
   strategy:
-    # SLDA - Pure embedding-based approach (no replay)
+    # Naive - Standard fine-tuning (catastrophic forgetting baseline)
+    - name: naive
+      type: naive
+      params: {}
+        
+    # SLDA Pure - Embedding-based approach (no replay)
     - name: slda_pure
       type: slda
       params:
         shrinkage_param: 0.0001
         streaming_update_sigma: true
         
-    # Replay - Pure replay-based approach (no embedding tricks)
+    # Replay Pure - Pure replay-based approach
     - name: replay_pure
       type: replay
       params:
-        mem_size: 1000  # Store 1000 exemplars
-        
-    # GDumb - Alternative replay-based approach
-    - name: gdumb
-      type: gdumb
-      params:
         mem_size: 1000
-            
-    # Additional baselines for comparison
-    - name: naive
-      type: naive
-      params: {}
-      
-    - name: ewc
-      type: ewc
-      params:
-        ewc_lambda: 0.4
-        mode: online
         
-    - name: icarl
+    # SLDA with Replay - Hybrid approach combining both
+    - name: slda_with_replay
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500  # Smaller memory since SLDA helps
+            
+    # iCaRL Pure - Exemplar + prototype approach
+    - name: icarl_pure
       type: icarl
       params:
         memory_size: 1000
         fixed_memory: true
+        
+    # iCaRL with Replay - Enhanced iCaRL with additional replay
+    - name: icarl_with_replay
+      type: icarl
+      params:
+        memory_size: 500  # Reduced since replay adds more memory
+        fixed_memory: true
+      plugins:
+        - name: replay
+          params:
+            mem_size: 500
 
 fixed:
   # Fixed model - EfficientNet B0 with pre-trained weights

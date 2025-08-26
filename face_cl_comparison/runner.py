@@ -489,24 +489,45 @@ def main():
         df = pd.DataFrame(all_results)
         df.to_csv(output_dir / 'results.csv', index=False)
         
-        tab_size = 17
-        print(f"\n{'='*90}")
+        # Calculate dynamic column widths based on longest values
+        col_widths = {
+            'run_name': max(len('run_name'), max(len(str(x)) for x in df['run_name'])) + 2,
+            'strategy': max(len('strategy'), max(len(str(x)) for x in df['strategy'])) + 2,
+            'model': max(len('model'), max(len(str(x)) for x in df['model'])) + 2,
+            'dataset_name': max(len('dataset_name'), max(len(str(x)) for x in df['dataset_name'])) + 2,
+            'average_accuracy': 18  # Fixed width for numeric column
+        }
+        
+        # Calculate total width for separator
+        total_width = sum(col_widths.values())
+        
+        print(f"\n{'='*total_width}")
         print("RESULTS SUMMARY\n")
-        print(f"{'run_name':<{tab_size}} {'strategy':<{tab_size}} {'model':<{tab_size}} {'dataset_name':<{tab_size}} {'average_accuracy':<{tab_size}}")
-        print('='*90)
+        print(f"{'run_name':<{col_widths['run_name']}} "
+              f"{'strategy':<{col_widths['strategy']}} "
+              f"{'model':<{col_widths['model']}} "
+              f"{'dataset_name':<{col_widths['dataset_name']}} "
+              f"{'average_accuracy':<{col_widths['average_accuracy']}}")
+        print('='*total_width)
         
         if debug_mode:
             # Single seed - show simple table
             for _, row in df.iterrows():
-                print(f"{row['run_name']:<{tab_size}} {row['strategy']:<{tab_size}} {row['model']:<{tab_size}} {row['dataset_name']:<{tab_size}} "
+                print(f"{row['run_name']:<{col_widths['run_name']}} "
+                      f"{row['strategy']:<{col_widths['strategy']}} "
+                      f"{row['model']:<{col_widths['model']}} "
+                      f"{row['dataset_name']:<{col_widths['dataset_name']}} "
                       f"{row['average_accuracy']:.4f}")
         else:
             # Multiple seeds - show mean ± std
             for _, row in df.iterrows():
-                print(f"{row['run_name']:<{tab_size}} {row['strategy']:<{tab_size}} {row['model']:<{tab_size}} {row['dataset_name']:<{tab_size}} "
+                print(f"{row['run_name']:<{col_widths['run_name']}} "
+                      f"{row['strategy']:<{col_widths['strategy']}} "
+                      f"{row['model']:<{col_widths['model']}} "
+                      f"{row['dataset_name']:<{col_widths['dataset_name']}} "
                       f"{row['accuracy_mean']:.3f} ± {row['accuracy_std']:.3f}")
         
-        print(f"\n{'='*90}")
+        print(f"\n{'='*total_width}")
         print(f"EXPERIMENT COMPLETE: {successful_runs}/{total_runs} runs successful")
         if failed_runs > 0:
             print(f"⚠️  {failed_runs} runs failed - check output above for error details")
