@@ -246,8 +246,12 @@ def _create_feature_extractor(model: nn.Module, model_type: str, device: Union[s
                         if isinstance(actual_model.output_layer.linear, nn.Linear):
                             self.num_features = actual_model.output_layer.linear.out_features
                         else:
-                            # nn.Identity case - uses emb size (default 512)
-                            self.num_features = 512
+                            # nn.Identity case - uses emb size
+                            # Get emb size from the conv layer before linear
+                            if hasattr(actual_model.output_layer, 'conv'):
+                                self.num_features = actual_model.output_layer.conv.out_channels
+                            else:
+                                self.num_features = 512  # Default fallback
                     else:
                         self.num_features = 512
                 elif hasattr(actual_model, 'num_features'):

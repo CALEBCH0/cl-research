@@ -248,6 +248,7 @@ def main():
     
     # Run experiments
     all_results = []
+    failed_runs_details = []  # Track failed runs with details
     
     for i, run_config in enumerate(runs):
         if stop_requested:
@@ -446,6 +447,15 @@ def main():
                 run_results_by_seed.append(result)
                 
             except Exception as e:
+                error_info = {
+                    'run_name': run_config['name'],
+                    'seed': seed,
+                    'error_message': str(e),
+                    'error_type': type(e).__name__,
+                    'traceback': traceback.format_exc()
+                }
+                failed_runs_details.append(error_info)
+                
                 print(f"Error in run {run_config['name']} with seed {seed}: {str(e)}")
                 print(f"Error type: {type(e).__name__}")
                 if debug_mode or 'pure_ncm' in run_config['name']:  # Always show traceback for pure_ncm
@@ -529,8 +539,28 @@ def main():
         
         print(f"\n{'='*total_width}")
         print(f"EXPERIMENT COMPLETE: {successful_runs}/{total_runs} runs successful")
-        if failed_runs > 0:
-            print(f"⚠️  {failed_runs} runs failed - check output above for error details")
+        
+        # Show failed runs summary
+        if failed_runs_details:
+            print(f"\n{'='*total_width}")
+            print("FAILED RUNS SUMMARY")
+            print(f"{'='*total_width}")
+            
+            for error_info in failed_runs_details:
+                print(f"\n❌ {error_info['run_name']} (seed {error_info['seed']})")
+                print(f"   Error: {error_info['error_type']}: {error_info['error_message']}")
+                
+                # Show abbreviated traceback (last few lines)
+                traceback_lines = error_info['traceback'].strip().split('\n')
+                if len(traceback_lines) > 3:
+                    print(f"   Traceback: ...{traceback_lines[-3]}")
+                    print(f"              {traceback_lines[-2]}")
+                    print(f"              {traceback_lines[-1]}")
+                else:
+                    print(f"   Traceback: {error_info['traceback']}")
+            
+            print(f"\n⚠️  {len(failed_runs_details)} runs failed total")
+        
         print(f"Results saved to: {output_dir}")
         
         if stop_requested:
