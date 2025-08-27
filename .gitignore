@@ -58,3 +58,6 @@ wandb/
 
 # Claude
 .claude/
+
+# SmartEye dataset cache
+.smarteye_cache/

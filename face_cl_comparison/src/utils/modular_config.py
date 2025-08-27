@@ -208,28 +208,39 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
         elif dataset_config['name'].startswith('smarteye'):
             # Use SmartEye-specific creation with image_size support
             from src.datasets.smarteye import create_smarteye_benchmark, get_smarteye_config
+            from src.datasets.smarteye_cached import create_smarteye_benchmark_cached
             
             # Get custom path if specified
             root_dir = dataset_config.get('path', '/Users/calebcho/data/face_dataset')
             
+            # Determine if we should use caching (on by default)
+            use_cache = dataset_config.get('use_cache', True)
+            preload_to_memory = dataset_config.get('preload_to_memory', False)
+            
             if dataset_config['name'] in ['smarteye_crop', 'smarteye_raw']:
                 config = get_smarteye_config(dataset_config['name'])
-                return create_smarteye_benchmark(
+                return create_smarteye_benchmark_cached(
                     root_dir=root_dir,
                     n_experiences=dataset_config.get('n_experiences', 17),  # CL default
                     use_cropdata=config['use_cropdata'],
                     image_size=tuple(dataset_config.get('image_size', [112, 112])),
+                    test_split=dataset_config.get('test_split', 0.2),
                     seed=dataset_config.get('seed', 42),
-                    min_samples_per_class=config['min_samples_per_class']
+                    min_samples_per_class=config['min_samples_per_class'],
+                    use_cache=use_cache,
+                    preload_to_memory=preload_to_memory
                 )
             else:
                 # Default SmartEye config
-                return create_smarteye_benchmark(
+                return create_smarteye_benchmark_cached(
                     root_dir=root_dir,
                     n_experiences=dataset_config.get('n_experiences', 17),  # CL default
                     use_cropdata=True,
                     image_size=tuple(dataset_config.get('image_size', [112, 112])),
-                    seed=dataset_config.get('seed', 42)
+                    test_split=dataset_config.get('test_split', 0.2),
+                    seed=dataset_config.get('seed', 42),
+                    use_cache=use_cache,
+                    preload_to_memory=preload_to_memory
                 )
         else:
             # Use existing create_benchmark function for other datasets
