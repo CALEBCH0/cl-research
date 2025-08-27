@@ -268,7 +268,7 @@ def main():
             benchmark_cache = {}
             
         # All benchmarks now return BenchmarkInfo objects
-        print(f"✅ Created shared benchmark: {shared_benchmark_info.num_train} train, {shared_benchmark_info.num_test} test samples")
+        print(f"Created shared benchmark: {shared_benchmark_info.num_train} train, {shared_benchmark_info.num_test} test samples")
     else:
         print(f"\nDataset VARIES across runs - will create benchmark per run")
         benchmark_cache = {}

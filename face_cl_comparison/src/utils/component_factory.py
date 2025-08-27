@@ -34,6 +34,86 @@ AVALANCHE_MODELS = {
     'expert_gate': 'ExpertGate',
 }
 
+TORCHVISION_MODELS = {
+    # ResNet family
+    'resnet18_tv': 'resnet18',
+    'resnet34': 'resnet34', 
+    'resnet50_tv': 'resnet50',
+    'resnet101': 'resnet101',
+    'resnet152': 'resnet152',
+    'resnext50_32x4d': 'resnext50_32x4d',
+    'resnext101_32x8d': 'resnext101_32x8d',
+    'wide_resnet50_2': 'wide_resnet50_2',
+    'wide_resnet101_2': 'wide_resnet101_2',
+    
+    # EfficientNet family
+    'efficientnet_b0': 'efficientnet_b0',
+    'efficientnet_b1': 'efficientnet_b1',
+    'efficientnet_b2': 'efficientnet_b2',
+    'efficientnet_b3': 'efficientnet_b3',
+    'efficientnet_b4': 'efficientnet_b4',
+    'efficientnet_b5': 'efficientnet_b5',
+    'efficientnet_b6': 'efficientnet_b6',
+    'efficientnet_b7': 'efficientnet_b7',
+    'efficientnet_v2_s': 'efficientnet_v2_s',
+    'efficientnet_v2_m': 'efficientnet_v2_m',
+    'efficientnet_v2_l': 'efficientnet_v2_l',
+    
+    # MobileNet family
+    'mobilenet_v2': 'mobilenet_v2',
+    'mobilenet_v3_large': 'mobilenet_v3_large',
+    'mobilenet_v3_small': 'mobilenet_v3_small',
+    
+    # VGG family
+    'vgg11': 'vgg11',
+    'vgg11_bn': 'vgg11_bn',
+    'vgg13': 'vgg13', 
+    'vgg13_bn': 'vgg13_bn',
+    'vgg16': 'vgg16',
+    'vgg16_bn': 'vgg16_bn',
+    'vgg19': 'vgg19',
+    'vgg19_bn': 'vgg19_bn',
+    
+    # DenseNet family
+    'densenet121': 'densenet121',
+    'densenet161': 'densenet161',
+    'densenet169': 'densenet169',
+    'densenet201': 'densenet201',
+    
+    # Vision Transformer
+    'vit_b_16': 'vit_b_16',
+    'vit_b_32': 'vit_b_32',
+    'vit_l_16': 'vit_l_16',
+    'vit_l_32': 'vit_l_32',
+    'vit_h_14': 'vit_h_14',
+    
+    # ConvNeXt
+    'convnext_tiny': 'convnext_tiny',
+    'convnext_small': 'convnext_small',
+    'convnext_base': 'convnext_base',
+    'convnext_large': 'convnext_large',
+    
+    # RegNet
+    'regnet_y_400mf': 'regnet_y_400mf',
+    'regnet_y_800mf': 'regnet_y_800mf',
+    'regnet_y_1_6gf': 'regnet_y_1_6gf',
+    'regnet_y_3_2gf': 'regnet_y_3_2gf',
+    'regnet_y_8gf': 'regnet_y_8gf',
+    'regnet_y_16gf': 'regnet_y_16gf',
+    'regnet_y_32gf': 'regnet_y_32gf',
+    
+    # MaxViT
+    'maxvit_t': 'maxvit_t',
+    
+    # Swin Transformer
+    'swin_t': 'swin_t',
+    'swin_s': 'swin_s',
+    'swin_b': 'swin_b',
+    'swin_v2_t': 'swin_v2_t',
+    'swin_v2_s': 'swin_v2_s',
+    'swin_v2_b': 'swin_v2_b',
+}
+
 AVALANCHE_STRATEGIES = {
     # Basic strategies
     'naive': 'Naive',
@@ -200,6 +280,40 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info) -> nn
                 
             print(f"Created Avalanche {avalanche_class}: {model_type}")
             return model
+            
+    # Check if it's a torchvision model
+    elif model_type in TORCHVISION_MODELS:
+        import torchvision.models as models
+        import torch.nn as nn
+        
+        torchvision_name = TORCHVISION_MODELS[model_type]
+        model_fn = getattr(models, torchvision_name)
+        model = model_fn(pretrained=params.get('pretrained', True))
+        
+        # Adapt the final layer for the number of classes
+        if hasattr(model, 'classifier'):
+            if isinstance(model.classifier, nn.Sequential):
+                # Models like EfficientNet with Sequential classifier
+                last_layer = model.classifier[-1]
+                if isinstance(last_layer, nn.Linear):
+                    model.classifier[-1] = nn.Linear(last_layer.in_features, benchmark_info.num_classes)
+            elif isinstance(model.classifier, nn.Linear):
+                # Models like VGG with Linear classifier
+                model.classifier = nn.Linear(model.classifier.in_features, benchmark_info.num_classes)
+        elif hasattr(model, 'fc'):
+            # ResNet-style models with fc layer
+            model.fc = nn.Linear(model.fc.in_features, benchmark_info.num_classes)
+        elif hasattr(model, 'head'):
+            # Vision Transformer models with head
+            if hasattr(model.head, 'in_features'):
+                model.head = nn.Linear(model.head.in_features, benchmark_info.num_classes)
+        elif hasattr(model, 'heads'):
+            # Some models have heads instead of head
+            if hasattr(model.heads, 'head'):
+                model.heads.head = nn.Linear(model.heads.head.in_features, benchmark_info.num_classes)
+                
+        print(f"Created torchvision {torchvision_name}: {model_type}")
+        return model
             
     # Check if it's a custom model
     elif model_type in CUSTOM_MODELS:
