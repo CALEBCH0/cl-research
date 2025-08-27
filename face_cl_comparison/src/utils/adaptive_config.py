@@ -214,6 +214,9 @@ def adjust_config_for_hardware(config: Dict[str, Any]) -> Dict[str, Any]:
     #         adjusted_config['fixed']['dataset'] = {}
     #     adjusted_config['fixed']['dataset']['image_size'] = list(optimal_size)
     
+    # Use original dataset size since we're not optimizing
+    optimal_size = dataset_default
+    
     # Adjust batch size
     training_config = config.get('fixed', {}).get('training', {})
     base_batch_size = training_config.get('batch_size', 32)
