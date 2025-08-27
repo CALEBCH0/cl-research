@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import Dataset, TensorDataset
 from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
+from .experiment_cache import get_cached_dataset, cache_dataset
 
 class CachedSmartEyeDataset(Dataset):
     """SmartEye dataset with lazy loading (doesn't load all images into memory)."""
@@ -63,6 +64,10 @@ def create_smarteye_benchmark_cached(
     """
     Create SmartEye benchmark with caching support.
     
+    This function implements a two-level caching system:
+    1. Experiment-level cache: Reuses dataset objects across runs within same experiment
+    2. Disk cache: Persists split indices across different experiments
+    
     Args:
         root_dir: Path to face_dataset directory
         use_cropdata: If True, use cropdata; if False, use rawdata
@@ -79,6 +84,25 @@ def create_smarteye_benchmark_cached(
     Returns:
         Avalanche NCScenario benchmark
     """
+    
+    # Create config dict for experiment-level caching
+    dataset_config = {
+        'root_dir': root_dir,
+        'use_cropdata': use_cropdata,
+        'n_experiences': n_experiences,
+        'image_size': image_size,
+        'test_split': test_split,
+        'seed': seed,
+        'min_samples_per_class': min_samples_per_class,
+        'preload_to_memory': preload_to_memory
+    }
+    
+    # Check experiment-level cache first
+    cached_benchmark = get_cached_dataset(dataset_config)
+    if cached_benchmark is not None:
+        return cached_benchmark
+    
+    # If not in experiment cache, proceed with disk cache
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(exist_ok=True)
     
@@ -156,6 +180,9 @@ def create_smarteye_benchmark_cached(
                 fixed_class_order=class_order,
                 class_ids_from_zero_in_each_exp=False
             )
+            
+            # Cache the benchmark for reuse across runs in this experiment
+            cache_dataset(dataset_config, benchmark)
             
             return benchmark
     
@@ -292,5 +319,8 @@ def create_smarteye_benchmark_cached(
     
     print(f"Created benchmark: {benchmark.n_experiences} experiences")
     print(f"Train/test split: {len(train_paths)} train, {len(test_paths)} test")
+    
+    # Cache the benchmark for reuse across runs in this experiment
+    cache_dataset(dataset_config, benchmark)
     
     return benchmark

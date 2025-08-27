@@ -73,6 +73,8 @@ fixed:
     # ⚠️  n_experiences: FIXED AT 17 (1 identity per experience)
     # ⚠️  DO NOT SPECIFY n_experiences - it's hardcoded for proper CL
     test_split: 0.2
+    use_cache: true  # Use cached dataset splits for faster loading
+    preload_to_memory: false  # Memory efficient loading
     
   # Training configuration optimized for face recognition
   training:

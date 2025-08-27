@@ -67,6 +67,8 @@ fixed:
     path: /home/dylee/data/data_fid/FaceID/ARM
     # n_experiences: FIXED AT 17 (1 identity per experience)
     test_split: 0.2
+    use_cache: true  # Use cached dataset splits for faster loading
+    preload_to_memory: false  # Memory efficient loading
     
   # Training configuration with reduced batch size
   training:

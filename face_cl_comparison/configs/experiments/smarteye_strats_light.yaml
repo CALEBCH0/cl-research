@@ -1,0 +1,59 @@
+# Light continual learning strategy comparison on SmartEye (key strategies only)
+name: smarteye_strats_light
+description: Compare key CL strategies (SLDA, Replay, Naive) on SmartEye with EfficientNet
+
+vary:
+  strategy:
+    # Naive - Standard fine-tuning (catastrophic forgetting baseline)
+    - name: naive
+      type: naive
+      params: {}
+        
+    # SLDA - Embedding-based approach (best for face recognition)
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+        
+    # Replay - Memory-based approach
+    - name: replay
+      type: replay
+      params:
+        mem_size: 1000
+
+fixed:
+  # Fixed model - EfficientNet B0 with pre-trained weights
+  model:
+    name: efficientnet_b0
+    type: efficientnet_b0
+    params:
+      pretrained: true
+  
+  # Placeholder strategy (overridden by vary)
+  strategy:
+    name: slda
+    type: slda
+    params: {}
+      
+  # Fixed dataset - SmartEye IR faces
+  dataset:
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    test_split: 0.2
+    use_cache: true  # Use cached dataset splits for faster loading
+    preload_to_memory: false  # Memory efficient loading
+    
+  # Training configuration
+  training:
+    epochs_per_experience: 1  # Minimal for quick testing
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]
+    device: cuda
+    save_checkpoints: false
