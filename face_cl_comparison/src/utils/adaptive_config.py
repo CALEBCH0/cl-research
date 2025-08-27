@@ -204,14 +204,15 @@ def adjust_config_for_hardware(config: Dict[str, Any]) -> Dict[str, Any]:
     dataset_config = config.get('fixed', {}).get('dataset', {})
     dataset_default = tuple(dataset_config.get('image_size', [112, 112]))
     
-    # Optimize image size
-    optimal_size = get_optimal_image_size(model_types, dataset_default)
-    if optimal_size != dataset_default:
-        if 'fixed' not in adjusted_config:
-            adjusted_config['fixed'] = {}
-        if 'dataset' not in adjusted_config['fixed']:
-            adjusted_config['fixed']['dataset'] = {}
-        adjusted_config['fixed']['dataset']['image_size'] = list(optimal_size)
+    # DON'T optimize image size for now - causes too many issues
+    # Let models handle their own resizing
+    # optimal_size = get_optimal_image_size(model_types, dataset_default)
+    # if optimal_size != dataset_default:
+    #     if 'fixed' not in adjusted_config:
+    #         adjusted_config['fixed'] = {}
+    #     if 'dataset' not in adjusted_config['fixed']:
+    #         adjusted_config['fixed']['dataset'] = {}
+    #     adjusted_config['fixed']['dataset']['image_size'] = list(optimal_size)
     
     # Adjust batch size
     training_config = config.get('fixed', {}).get('training', {})

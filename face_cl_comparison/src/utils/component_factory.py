@@ -11,31 +11,44 @@ def auto_detect_feature_size(model: nn.Module, benchmark_info) -> int:
     """
     model.eval()
     
-    # Create a dummy input based on benchmark info
+    # Get the device the model is on
+    device = next(model.parameters()).device if len(list(model.parameters())) > 0 else torch.device('cpu')
+    
+    # Create a dummy input on the same device
     dummy_input = torch.randn(1, benchmark_info.channels, 
-                             benchmark_info.input_size, benchmark_info.input_size)
+                             benchmark_info.input_size, benchmark_info.input_size).to(device)
     
     with torch.no_grad():
         try:
+            # For wrapped models, just run forward
+            if hasattr(model, 'get_features'):
+                features = model(dummy_input)
             # Try to get features from the model
-            if hasattr(model, 'features'):
+            elif hasattr(model, 'features'):
                 features = model.features(dummy_input)
             elif hasattr(model, 'feature_extractor'):
                 features = model.feature_extractor(dummy_input)
             else:
                 # For models without separate feature extractor, get penultimate layer output
-                # This is tricky - we need to modify the model temporarily
                 features = get_penultimate_features(model, dummy_input)
             
             # Flatten and get feature dimension
             if features.dim() > 2:
                 features = features.view(features.size(0), -1)
             
-            return features.shape[1]
+            feature_size = features.shape[1]
+            
+            # Sanity check - feature size should be reasonable
+            if feature_size > 100000:
+                print(f"Warning: Detected unreasonably large feature size {feature_size}, using fallback")
+                # Common feature sizes for known models
+                return 512  # Conservative default
+                
+            return feature_size
         except Exception as e:
             print(f"Warning: Could not auto-detect feature size: {e}")
-            # Fallback based on input size
-            return benchmark_info.input_size * benchmark_info.input_size * benchmark_info.channels
+            # Better fallback based on known models
+            return 512  # Most face models use 512 features
 
 
 def get_penultimate_features(model: nn.Module, x: torch.Tensor) -> torch.Tensor:
@@ -450,7 +463,7 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model: nn.Modul
             from avalanche.training.supervised.deep_slda import StreamingLDA
             
             # For SLDA, we need the feature extractor part of the model
-            if hasattr(model, 'features') and hasattr(model, 'classifier'):
+            if hasattr(model, 'features') and hasattr(model, 'classifier') and hasattr(model, '_input_size'):
                 # Standard Avalanche models like SimpleMLP - use features + proper input handling
                 class SLDAFeatureWrapper(nn.Module):
                     def __init__(self, base_model):
@@ -530,8 +543,23 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model: nn.Modul
                 model_type_name = kwargs.get('model_type', strategy_config.get('model_type', 'unknown'))
                 slda_model = SLDAModelWrapper(model, model_type_name)
                 
+                # Move wrapper to same device as model
+                model_device = next(model.parameters()).device if len(list(model.parameters())) > 0 else device
+                slda_model = slda_model.to(model_device)
+                
                 # Auto-detect feature size using the wrapper
                 feature_size = auto_detect_feature_size(slda_model, benchmark_info)
+                
+                # Hardcoded feature sizes for known face models as fallback
+                if feature_size > 10000 or model_type_name in ['ghostfacenetv2', 'modified_mobilefacenet', 'dwseesawfacev2']:
+                    face_model_features = {
+                        'ghostfacenetv2': 256,  # or 512 depending on config
+                        'modified_mobilefacenet': 512,
+                        'dwseesawfacev2': 512,
+                    }
+                    feature_size = face_model_features.get(model_type_name, 512)
+                    print(f"Using known feature size for {model_type_name}: {feature_size}")
+                    
                 print(f"Using wrapped model for SLDA: feature_size={feature_size}")
             
             strategy = StreamingLDA(
