@@ -735,10 +735,21 @@ def create_strategy(strategy_name, model, optimizer, criterion, device,
     elif strategy_name == 'slda':
         # SLDA requires a feature extractor model, not a classifier
         
-        # Create feature extractor
-        feature_extractor = GenericFeatureExtractor(model, model_type)
+        # For standard Avalanche models, use them directly with SLDA
+        if model_type in ['mlp', 'cnn'] and hasattr(model, 'features'):
+            # Standard Avalanche models like SimpleMLP already have proper structure
+            feature_extractor = model
+            # For SimpleMLP, the feature size is the hidden layer size
+            if hasattr(model, 'classifier') and isinstance(model.classifier, nn.Linear):
+                feature_size = model.classifier.in_features
+            else:
+                feature_size = benchmark_info.input_size  # fallback
+        else:
+            # Create feature extractor for custom models
+            feature_extractor = GenericFeatureExtractor(model, model_type)
+            feature_size = feature_extractor.num_features
+            
         feature_extractor = feature_extractor.to(device)
-        feature_size = feature_extractor.num_features
         
         print(f"SLDA: Created feature extractor for {model_type} with feature size {feature_size}")
         

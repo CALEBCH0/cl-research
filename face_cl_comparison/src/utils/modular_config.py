@@ -179,7 +179,7 @@ def expand_modular_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def create_dataset_from_config(dataset_config: Dict[str, Any]):
     """
-    Create a dataset based on modular config.
+    Create a dataset based on modular config using unified factory.
     
     Args:
         dataset_config: Processed dataset config with name, type, params
@@ -187,180 +187,23 @@ def create_dataset_from_config(dataset_config: Dict[str, Any]):
     Returns:
         Dataset benchmark and info
     """
-    from src.training import create_benchmark
-    from src.datasets.lfw import create_lfw_controlled_benchmark
-    from src.datasets.subset_utils import DatasetSubsetConfig
-    
-    if dataset_config['is_predefined']:
-        # Check if it's an LFW variant that needs image_size
-        if dataset_config['name'].startswith('lfw'):
-            # Use LFW-specific creation with image_size support
-            from src.datasets.lfw import create_lfw_benchmark
-            from src.datasets.lfw_configs import get_lfw_config
-            
-            config = get_lfw_config(dataset_config['name'])
-            return create_lfw_benchmark(
-                n_experiences=dataset_config.get('n_experiences', 10),
-                min_faces_per_person=config['min_faces_per_person'],
-                image_size=tuple(dataset_config.get('image_size', [64, 64])),
-                seed=dataset_config.get('seed', 42)
-            )
-        elif dataset_config['name'].startswith('smarteye'):
-            # Use SmartEye-specific creation with image_size support
-            from src.datasets.smarteye import create_smarteye_benchmark, get_smarteye_config
-            from src.datasets.smarteye_cached import create_smarteye_benchmark_cached
-            
-            # Get custom path if specified
-            root_dir = dataset_config.get('path', '/Users/calebcho/data/face_dataset')
-            
-            # Determine if we should use caching (on by default)
-            use_cache = dataset_config.get('use_cache', True)
-            preload_to_memory = dataset_config.get('preload_to_memory', False)
-            
-            if dataset_config['name'] in ['smarteye_crop', 'smarteye_raw']:
-                config = get_smarteye_config(dataset_config['name'])
-                return create_smarteye_benchmark_cached(
-                    root_dir=root_dir,
-                    n_experiences=dataset_config.get('n_experiences', 17),  # CL default
-                    use_cropdata=config['use_cropdata'],
-                    image_size=tuple(dataset_config.get('image_size', [112, 112])),
-                    test_split=dataset_config.get('test_split', 0.2),
-                    seed=dataset_config.get('seed', 42),
-                    min_samples_per_class=config['min_samples_per_class'],
-                    use_cache=use_cache,
-                    preload_to_memory=preload_to_memory
-                )
-            else:
-                # Default SmartEye config
-                return create_smarteye_benchmark_cached(
-                    root_dir=root_dir,
-                    n_experiences=dataset_config.get('n_experiences', 17),  # CL default
-                    use_cropdata=True,
-                    image_size=tuple(dataset_config.get('image_size', [112, 112])),
-                    test_split=dataset_config.get('test_split', 0.2),
-                    seed=dataset_config.get('seed', 42),
-                    use_cache=use_cache,
-                    preload_to_memory=preload_to_memory
-                )
-        else:
-            # Use existing create_benchmark function for other datasets
-            return create_benchmark(
-                dataset_config['name'],
-                experiences=dataset_config.get('n_experiences', 10),
-                seed=dataset_config.get('seed', 42),
-                subset_config=None
-            )
-    
-    else:
-        # Custom dataset
-        dataset_type = dataset_config['type']
-        params = dataset_config['params']
-        
-        if dataset_type == 'lfw':
-            # Create LFW with custom parameters
-            subset_config = DatasetSubsetConfig(
-                target_classes=params['target_classes'],
-                min_samples_per_class=params.get('min_samples_per_class', 20),
-                selection_strategy=params.get('selection_strategy', 'most_samples'),
-                n_experiences=dataset_config.get('n_experiences'),
-                seed=dataset_config.get('seed', 42)
-            )
-            
-            return create_lfw_controlled_benchmark(
-                subset_config,
-                image_size=tuple(dataset_config.get('image_size', [64, 64])),
-                test_split=dataset_config.get('test_split', 0.2)
-            )
-        
-        else:
-            raise ValueError(f"Unknown custom dataset type: {dataset_type}")
+    from .component_factory import create_benchmark_from_config
+    return create_benchmark_from_config(dataset_config)
 
 
 def create_model_from_config(model_config: Dict[str, Any], benchmark_info):
     """
-    Create a model based on modular config.
+    Create a model based on modular config using unified factory.
     
     Args:
         model_config: Processed model config with name, type, params
-        benchmark_info: Either a BenchmarkInfo namedtuple or dict with benchmark information
+        benchmark_info: BenchmarkInfo object with dataset information
         
     Returns:
         Model instance
     """
-    # Extract num_classes from benchmark_info (handle both dict and namedtuple)
-    if hasattr(benchmark_info, 'num_classes'):
-        num_classes = benchmark_info.num_classes
-    else:
-        num_classes = benchmark_info['num_classes']
-    model_type = model_config['type']
-    params = model_config.get('params', {})
-    
-    # Check if it's a custom backbone model
-    if model_type in ['dwseesawfacev2', 'ghostfacenetv2', 'modified_mobilefacenet']:
-        # Custom backbone models - pass all params as kwargs
-        from src.training import create_model
-        
-        # Create a temporary benchmark info for compatibility
-        from collections import namedtuple
-        BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
-        
-        # Determine input size based on model or params
-        if model_type == 'ghostfacenetv2' and 'image_size' in params:
-            # GhostFaceNetV2 expects integer image_size, not tuple
-            img_size = params['image_size']
-            if isinstance(img_size, int):
-                input_size = img_size * img_size
-            else:
-                input_size = img_size[0] * img_size[1]
-        else:
-            input_size = 64 * 64  # Default
-            
-        benchmark_info = BenchmarkInfo(
-            input_size=input_size,
-            num_classes=num_classes,
-            channels=1  # Most face models expect grayscale
-        )
-        
-        # Create model with all params
-        model = create_model(model_type, benchmark_info, **params)
-        
-        # For face models, we don't need to add a classifier here
-        # The strategy (especially SLDA) will handle that
-        # Just return the backbone model that outputs embeddings
-        
-    else:
-        # Try original backbone creation
-        try:
-            from src.models.backbones import create_backbone
-            
-            backbone = create_backbone(
-                model_type,
-                pretrained=params.get('pretrained', True),
-                num_classes=num_classes
-            )
-            model = backbone
-        except:
-            # Fallback to training.py create_model
-            from src.training import create_model
-            from collections import namedtuple
-            
-            BenchmarkInfo = namedtuple("BenchmarkInfo", ["input_size", "num_classes", "channels"])
-            benchmark_info = BenchmarkInfo(
-                input_size=64 * 64,
-                num_classes=num_classes,
-                channels=1
-            )
-            
-            model = create_model(model_type, benchmark_info, **params)
-    
-    # Apply additional settings
-    if params.get('freeze_backbone', False):
-        # Freeze all parameters except classifier
-        for name, param in model.named_parameters():
-            if 'classifier' not in name and 'fc' not in name:
-                param.requires_grad = False
-    
-    return model
+    from .component_factory import create_model_from_config as factory_create_model
+    return factory_create_model(model_config, benchmark_info)
 
 
 def create_strategy_from_config(strategy_config: Dict[str, Any], model, 
@@ -384,57 +227,19 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model,
     Returns:
         Strategy instance
     """
-    # Try to use the improved version first
-    try:
-        from src.training_v2 import create_strategy_from_config_v2
-        return create_strategy_from_config_v2(
-            strategy_config=strategy_config,
-            model=model,
-            benchmark_info=benchmark_info,
-            optimizer=optimizer,
-            criterion=criterion,
-            eval_plugin=eval_plugin,
-            device=device,
-            model_type=model_type,
-            **kwargs
-        )
-    except ImportError:
-        # Fallback to original implementation
-        from src.training import create_strategy
-        
-        strategy_name = strategy_config['type']
-        params = strategy_config.get('params', {})
-        plugins = strategy_config.get('plugins', [])
-        
-        # Process plugins if they're in modular format
-        processed_plugins = []
-        for plugin in plugins:
-            if isinstance(plugin, str):
-                processed_plugins.append({'name': plugin})
-            else:
-                processed_plugins.append(plugin)
-        
-        # Merge all parameters, with strategy params taking precedence
-        all_params = {**kwargs}
-        all_params.update(params)
-        
-        # Extract specific parameters that create_strategy expects as positional/keyword args
-        mem_size = all_params.pop('mem_size', 200)
-        epochs = all_params.pop('epochs', kwargs.get('epochs', 1))
-        batch_size = all_params.pop('batch_size', kwargs.get('batch_size', 32))
-        
-        return create_strategy(
-            strategy_name=strategy_name,
-            model=model,
-            optimizer=optimizer,
-            criterion=criterion,
-            device=device,
-            eval_plugin=eval_plugin,
-            mem_size=mem_size,
-            model_type=model_type,
-            benchmark_info=benchmark_info,
-            plugins_config=processed_plugins,
-            epochs=epochs,
-            batch_size=batch_size,
-            **all_params  # Pass any remaining params
-        )
+    from .component_factory import create_strategy_from_config as factory_create_strategy
+    
+    # Merge strategy params with kwargs, strategy params take precedence
+    all_params = {**kwargs}
+    all_params.update(strategy_config.get('params', {}))
+    
+    return factory_create_strategy(
+        strategy_config=strategy_config,
+        model=model,
+        benchmark_info=benchmark_info,
+        optimizer=optimizer,
+        criterion=criterion,
+        eval_plugin=eval_plugin,
+        device=device,
+        **all_params
+    )

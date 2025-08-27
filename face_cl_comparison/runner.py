@@ -243,8 +243,35 @@ def main():
                          for run in runs]
     fixed_dataset = len(set(dataset_names)) == 1
     
-    # Cache for benchmarks to avoid reloading
-    benchmark_cache = {}
+    # Create benchmark once if dataset is fixed
+    shared_benchmark = None
+    shared_benchmark_info = None
+    
+    if fixed_dataset:
+        print(f"\nDataset is FIXED ({dataset_names[0]}) - creating benchmark once for reuse across all runs")
+        
+        if is_modular:
+            # Use the dataset config from the first run (they're all the same)
+            first_run = runs[0]
+            dataset_config = first_run.get('dataset_config', first_run.get('dataset', {}))
+            
+            # Merge with fixed dataset settings
+            full_dataset_config = dataset_config.copy()
+            for key, value in config.get('fixed', {}).get('dataset', {}).items():
+                if key not in full_dataset_config:
+                    full_dataset_config[key] = value
+            
+            from src.utils.modular_config import create_dataset_from_config
+            shared_benchmark, shared_benchmark_info = create_dataset_from_config(full_dataset_config)
+        else:
+            # Original format - fallback to old benchmark cache logic if needed
+            benchmark_cache = {}
+            
+        # All benchmarks now return BenchmarkInfo objects
+        print(f"✅ Created shared benchmark: {shared_benchmark_info.num_train} train, {shared_benchmark_info.num_test} test samples")
+    else:
+        print(f"\nDataset VARIES across runs - will create benchmark per run")
+        benchmark_cache = {}
     
     # Run experiments
     all_results = []
@@ -323,73 +350,60 @@ def main():
                 # Get subset config if present
                 subset_config = fixed.get('dataset', {}).get('subset', None)
                 
-                # Get or create benchmark (with caching)
+                # Default n_experiences (will be updated from benchmark info)
                 n_experiences = fixed.get('dataset', {}).get('n_experiences', 5)
                 
-                if is_modular and 'dataset_config' in run_config:
-                    # Handle modular dataset creation
+                # Get benchmark - either shared or create per run
+                if fixed_dataset and shared_benchmark is not None:
+                    # Use the shared benchmark created once outside the loops
+                    cached_benchmark = shared_benchmark
+                    cached_info = shared_benchmark_info
+                    n_experiences = cached_info.n_experiences  # Get from shared benchmark info
+                    if debug_mode and seed_idx == 0:
+                        print(f"  Using shared benchmark for {dataset_names[0]}")
+                
+                elif is_modular and 'dataset_config' in run_config:
+                    # Dataset varies per run - create from cache or fresh
                     dataset_config = run_config['dataset_config']
                     
-                    # Override n_experiences if specified in params
-                    if 'n_experiences' in dataset_config.get('params', {}):
-                        n_experiences = dataset_config['params']['n_experiences']
-                    # Also check if n_experiences is directly in dataset_config (from fixed merge)
-                    elif 'n_experiences' in dataset_config:
-                        n_experiences = dataset_config['n_experiences']
-                    
-                    # Create cache key for modular dataset
+                    # Create cache key for varying datasets
                     cache_params = dataset_config.get('params', {}).copy()
+                    if 'model_config' in run_config:
+                        from src.utils.model_utils import get_dataset_requirements_for_model
+                        model_reqs = get_dataset_requirements_for_model(run_config['model_config'])
+                        cache_params['image_size'] = model_reqs['image_size']
                     
-                    # For fixed datasets, create once with default size and let models handle resizing
-                    if fixed_dataset:
-                        # Use dataset config with default image size for caching
-                        # Remove any model-specific image_size to use dataset's default
-                        cache_params.pop('image_size', None)  # Remove if present
-                        cache_key = (
-                            dataset_config['name'],
-                            n_experiences,
-                            frozenset(cache_params.items())  # Original config without image_size
-                        )
-                    else:
-                        # Different datasets - include model requirements
-                        if 'model_config' in run_config:
-                            from src.utils.model_utils import get_dataset_requirements_for_model
-                            model_reqs = get_dataset_requirements_for_model(run_config['model_config'])
-                            cache_params['image_size'] = model_reqs['image_size']
-                        
-                        cache_key = (
-                            dataset_config['name'],
-                            n_experiences,
-                            frozenset(cache_params.items())
-                        )
+                    cache_key = (
+                        dataset_config['name'],
+                        dataset_config.get('n_experiences', 5),
+                        frozenset(cache_params.items())
+                    )
                     
                     if cache_key in benchmark_cache:
                         cached_benchmark, cached_info = benchmark_cache[cache_key]
+                        n_experiences = cached_info.n_experiences  # Get from cached info
                         if debug_mode and seed_idx == 0:
                             print(f"  Using cached benchmark for {dataset_config['name']}")
                     else:
-                        # Create modular dataset
+                        # Create new benchmark for varying dataset
                         from src.utils.modular_config import create_dataset_from_config
                         from src.utils.model_utils import merge_dataset_config_with_model_requirements
                         
-                        # Merge fixed dataset settings with modular config
                         full_dataset_config = dataset_config.copy()
                         for key, value in fixed.get('dataset', {}).items():
                             if key not in full_dataset_config:
                                 full_dataset_config[key] = value
                         
-                        # Auto-adjust dataset config based on model requirements
-                        if not fixed_dataset and 'model_config' in run_config:
-                            # Only apply model requirements if dataset is varying
+                        if 'model_config' in run_config:
                             full_dataset_config = merge_dataset_config_with_model_requirements(
                                 full_dataset_config, run_config['model_config']
                             )
-                        # For fixed datasets, use default image size - models will handle resizing
                         
                         cached_benchmark, cached_info = create_dataset_from_config(full_dataset_config)
+                        n_experiences = cached_info.n_experiences  # Get from new info
                         benchmark_cache[cache_key] = (cached_benchmark, cached_info)
                         if debug_mode:
-                            print(f"  Created and cached modular benchmark for {dataset_config['name']}")
+                            print(f"  Created and cached benchmark for {dataset_config['name']}")
                 else:
                     # Original dataset creation
                     # Include subset config in cache key if present
@@ -402,6 +416,7 @@ def main():
                     if cache_key in benchmark_cache:
                         # Reuse cached benchmark
                         cached_benchmark, cached_info = benchmark_cache[cache_key]
+                        n_experiences = getattr(cached_info, 'n_experiences', n_experiences)  # Update from cached info
                         if debug_mode and seed_idx == 0:
                             print(f"  Using cached benchmark for {dataset_name}")
                     else:
@@ -410,6 +425,7 @@ def main():
                         cached_benchmark, cached_info = create_benchmark(
                             dataset_name, n_experiences, seed, subset_config
                         )
+                        n_experiences = getattr(cached_info, 'n_experiences', n_experiences)  # Update from new info
                         benchmark_cache[cache_key] = (cached_benchmark, cached_info)
                         if debug_mode:
                             print(f"  Created and cached benchmark for {dataset_name}")

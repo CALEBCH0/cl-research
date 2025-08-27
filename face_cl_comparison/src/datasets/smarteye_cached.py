@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import Dataset, TensorDataset
 from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
-from .experiment_cache import get_cached_dataset, cache_dataset
+from ..utils.benchmark_info import BenchmarkInfo
 
 class CachedSmartEyeDataset(Dataset):
     """SmartEye dataset with lazy loading (doesn't load all images into memory)."""
@@ -85,24 +85,7 @@ def create_smarteye_benchmark_cached(
         Avalanche NCScenario benchmark
     """
     
-    # Create config dict for experiment-level caching
-    dataset_config = {
-        'root_dir': root_dir,
-        'use_cropdata': use_cropdata,
-        'n_experiences': n_experiences,
-        'image_size': image_size,
-        'test_split': test_split,
-        'seed': seed,
-        'min_samples_per_class': min_samples_per_class,
-        'preload_to_memory': preload_to_memory
-    }
-    
-    # Check experiment-level cache first
-    cached_benchmark = get_cached_dataset(dataset_config)
-    if cached_benchmark is not None:
-        return cached_benchmark
-    
-    # If not in experiment cache, proceed with disk cache
+    # Simple disk-based caching only
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(exist_ok=True)
     
@@ -181,10 +164,20 @@ def create_smarteye_benchmark_cached(
                 class_ids_from_zero_in_each_exp=False
             )
             
-            # Cache the benchmark for reuse across runs in this experiment
-            cache_dataset(dataset_config, benchmark)
+            # Create BenchmarkInfo object
+            info = BenchmarkInfo(
+                num_classes=cache_data['n_classes'],
+                num_samples=len(train_paths) + len(test_paths),
+                num_train=len(train_paths),
+                num_test=len(test_paths),
+                image_size=image_size,
+                channels=1,  # Grayscale IR images
+                n_experiences=n_experiences,
+                dataset_name='smarteye_crop' if use_cropdata else 'smarteye_raw',
+                data_type='cropdata' if use_cropdata else 'rawdata'
+            )
             
-            return benchmark
+            return benchmark, info
     
     # If not cached or cache invalid, create new split
     print("Creating new dataset split...")
@@ -320,7 +313,17 @@ def create_smarteye_benchmark_cached(
     print(f"Created benchmark: {benchmark.n_experiences} experiences")
     print(f"Train/test split: {len(train_paths)} train, {len(test_paths)} test")
     
-    # Cache the benchmark for reuse across runs in this experiment
-    cache_dataset(dataset_config, benchmark)
+    # Create BenchmarkInfo object
+    info = BenchmarkInfo(
+        num_classes=num_classes,
+        num_samples=len(train_paths) + len(test_paths),
+        num_train=len(train_paths),
+        num_test=len(test_paths),
+        image_size=image_size,
+        channels=1,  # Grayscale IR images
+        n_experiences=n_experiences,
+        dataset_name='smarteye_crop' if use_cropdata else 'smarteye_raw',
+        data_type='cropdata' if use_cropdata else 'rawdata'
+    )
     
-    return benchmark
+    return benchmark, info

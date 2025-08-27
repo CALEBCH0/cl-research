@@ -1,31 +1,43 @@
-# Simple test comparison
+# Simple test comparison using modular config
 name: test_comparison
-description: Test backbone and strategy comparison
+description: Test strategy comparison with modular config
 
-# What to compare
-comparison:
-  vary:
-    strategy.name:
-      - naive
-      - replay
-
-# Fixed settings
-fixed:
-  model:
-    backbone:
-      name: mlp  # Default for testing
-
+vary:
   strategy:
-    params:
-      mem_size: 500
+    - name: naive
+      type: naive
+      params: {}
       
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+
+fixed:
+  # Fixed model
+  model:
+    name: mlp
+    type: mlp
+    params:
+      hidden_size: 256
+      hidden_layers: 2
+
+  # Fixed dataset
   dataset:
-    name: mnist  # Using MNIST for testing
+    name: mnist
+    is_predefined: true
     n_experiences: 5
     
+  # Training configuration
   training:
     epochs_per_experience: 1  # Quick test
-    debug: false
-    seed: 42
-    # seeds: [42, 123, 456, 789, 1011]  # Multiple seeds for robustness
-    seeds: [42, 123]  # Single seed for quick test
+    batch_size: 32
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42, 123]  # Quick test with 2 seeds
+    device: cuda
+    save_checkpoints: false
