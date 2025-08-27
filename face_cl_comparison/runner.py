@@ -189,6 +189,11 @@ def main():
     print(f"\nLoading config: {config_path}")
     config = parse_config(config_path)
     
+    # Apply adaptive optimizations
+    print("Applying adaptive optimizations...")
+    from src.utils.adaptive_config import adjust_config_for_hardware
+    config = adjust_config_for_hardware(config)
+    
     # Generate runs
     runs = generate_runs(config)
     

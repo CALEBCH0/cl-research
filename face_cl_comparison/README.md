@@ -17,6 +17,22 @@ A flexible framework for comparing continual learning strategies on face recogni
   - Modified MobileFaceNet
 - **Efficient Experimentation**: YAML-based configuration, multi-seed evaluation, automatic result aggregation
 
+## Optimization TODOs
+
+### Tier 1 (High Impact - Implement First)
+1. **Adaptive Batch Sizing** - Automatically adjust batch sizes based on model memory requirements and image dimensions
+2. **Smart Image Size Resolution** - Find optimal image sizes that minimize total upscaling cost across all models  
+3. **On-Demand Image Caching** - Cache resized images in memory/disk as needed without storage explosion
+
+### Tier 2 (Medium Impact)
+4. **Feature Dimension Auto-Detection** - Automatically detect model feature dimensions instead of hardcoding
+5. **Memory-Aware Training** - Adjust training parameters based on available GPU memory
+6. **Progressive Image Loading** - Load images with progressive quality scaling
+
+### Tier 3 (Advanced Optimizations)
+7. **Model-Specific Preprocessing Pipelines** - Optimize preprocessing for each model type
+8. **Lazy Feature Caching for SLDA** - Cache extracted features instead of re-extracting every epoch
+
 ## Installation
 
 ```bash

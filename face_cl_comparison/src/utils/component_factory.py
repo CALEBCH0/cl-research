@@ -5,6 +5,67 @@ import torch.nn as nn
 from typing import Dict, Any, Tuple, Optional
 
 
+def auto_detect_feature_size(model: nn.Module, benchmark_info) -> int:
+    """
+    Auto-detect the feature size of a model by doing a forward pass.
+    """
+    model.eval()
+    
+    # Create a dummy input based on benchmark info
+    dummy_input = torch.randn(1, benchmark_info.channels, 
+                             benchmark_info.input_size, benchmark_info.input_size)
+    
+    with torch.no_grad():
+        try:
+            # Try to get features from the model
+            if hasattr(model, 'features'):
+                features = model.features(dummy_input)
+            elif hasattr(model, 'feature_extractor'):
+                features = model.feature_extractor(dummy_input)
+            else:
+                # For models without separate feature extractor, get penultimate layer output
+                # This is tricky - we need to modify the model temporarily
+                features = get_penultimate_features(model, dummy_input)
+            
+            # Flatten and get feature dimension
+            if features.dim() > 2:
+                features = features.view(features.size(0), -1)
+            
+            return features.shape[1]
+        except Exception as e:
+            print(f"Warning: Could not auto-detect feature size: {e}")
+            # Fallback based on input size
+            return benchmark_info.input_size * benchmark_info.input_size * benchmark_info.channels
+
+
+def get_penultimate_features(model: nn.Module, x: torch.Tensor) -> torch.Tensor:
+    """
+    Extract features from the penultimate layer of a model.
+    """
+    # For models with classifier/fc layers, extract features before final layer
+    if hasattr(model, 'classifier'):
+        # Remove the final classifier and run forward
+        if isinstance(model.classifier, nn.Sequential):
+            # Create a new model without the last layer
+            feature_extractor = nn.Sequential(*list(model.children())[:-1])
+            return feature_extractor(x)
+        else:
+            # Single classifier layer - need to find the layer before it
+            modules = list(model.children())
+            feature_extractor = nn.Sequential(*modules[:-1])
+            features = feature_extractor(x)
+            return features.view(features.size(0), -1) if features.dim() > 2 else features
+    elif hasattr(model, 'fc'):
+        # ResNet-style models
+        modules = list(model.children())
+        feature_extractor = nn.Sequential(*modules[:-1])
+        features = feature_extractor(x)
+        return features.view(features.size(0), -1) if features.dim() > 2 else features
+    else:
+        # Fallback: run full model and hope it's already features
+        return model(x)
+
+
 # =====================================
 # AVALANCHE COMPONENT MAPPINGS
 # =====================================
@@ -403,13 +464,75 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model: nn.Modul
                         return self.base_model.features(x)
                 
                 slda_model = SLDAFeatureWrapper(model)
-                feature_size = model.classifier.in_features
+                # Get feature size from classifier
+                if isinstance(model.classifier, nn.Sequential):
+                    # Find the last Linear layer in Sequential
+                    for layer in reversed(model.classifier):
+                        if isinstance(layer, nn.Linear):
+                            feature_size = layer.in_features
+                            break
+                    else:
+                        feature_size = 1000  # fallback
+                else:
+                    feature_size = model.classifier.in_features
                 print(f"Using Avalanche model features for SLDA: feature_size={feature_size}")
             else:
-                # Custom models - use the whole model as feature extractor
-                slda_model = model
-                feature_size = all_params.get('input_size', benchmark_info.input_size)
-                print(f"Using custom model for SLDA: feature_size={feature_size}")
+                # For other models (torchvision, custom), create a wrapper that handles resizing
+                class SLDAModelWrapper(nn.Module):
+                    def __init__(self, model, model_type):
+                        super().__init__()
+                        self.model = model
+                        self.model_type = model_type
+                        
+                        # Set target size for model-specific input requirements
+                        if model_type == 'dwseesawfacev2' or 'dwseesaw' in model_type:
+                            self.target_size = (256, 256)
+                        elif model_type == 'ghostfacenetv2' or 'ghostface' in model_type:
+                            self.target_size = (112, 112)
+                        elif 'efficientnet' in model_type:
+                            self.target_size = (224, 224)
+                        elif model_type == 'modified_mobilefacenet' or 'mobilefacenet' in model_type:
+                            self.target_size = (256, 256)
+                        else:
+                            self.target_size = None
+                        
+                    def forward(self, x):
+                        # Resize input if needed
+                        if self.target_size:
+                            x = nn.functional.interpolate(x, size=self.target_size, mode='bilinear', align_corners=False)
+                        
+                        # Get penultimate layer features (not final classification)
+                        return self.get_features(x)
+                    
+                    def get_features(self, x):
+                        # Extract features from penultimate layer
+                        if hasattr(self.model, 'classifier'):
+                            # Models with classifier (EfficientNet, etc)
+                            modules = list(self.model.children())[:-1]
+                            feature_extractor = nn.Sequential(*modules)
+                            features = feature_extractor(x)
+                        elif hasattr(self.model, 'fc'):
+                            # ResNet-style models
+                            modules = list(self.model.children())[:-1]
+                            feature_extractor = nn.Sequential(*modules)
+                            features = feature_extractor(x)
+                        else:
+                            # Custom models - assume they output features directly
+                            features = self.model(x)
+                        
+                        # Flatten if needed
+                        if features.dim() > 2:
+                            features = features.view(features.size(0), -1)
+                            
+                        return features
+                
+                # Get model type from kwargs or strategy config
+                model_type_name = kwargs.get('model_type', strategy_config.get('model_type', 'unknown'))
+                slda_model = SLDAModelWrapper(model, model_type_name)
+                
+                # Auto-detect feature size using the wrapper
+                feature_size = auto_detect_feature_size(slda_model, benchmark_info)
+                print(f"Using wrapped model for SLDA: feature_size={feature_size}")
             
             strategy = StreamingLDA(
                 slda_model=slda_model,
