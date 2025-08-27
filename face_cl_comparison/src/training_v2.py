@@ -404,7 +404,7 @@ def _create_feature_extractor(model: nn.Module, model_type: str, device: Union[s
         # EfficientNet typically uses 224x224
         feature_extractor.target_size = (224, 224)
     elif model_type == 'modified_mobilefacenet' or 'mobilefacenet' in model_type:
-        feature_extractor.target_size = (112, 112)
+        feature_extractor.target_size = (256, 256)
     else:
         # No specific size requirement - use dataset default
         feature_extractor.target_size = None
