@@ -105,7 +105,7 @@ TORCHVISION_MODELS = [
 
 CUSTOM_MODELS = {
     'ghostfacenetv2': ('ghostfacenetV2', 'GhostFaceNetV2'),  # (module_file, class_name)
-    'modified_mobilefacenet': ('modified_mobilefacenet', 'ModifiedMobileFaceNet'),
+    'modified_mobilefacenet': ('modified_mobilefacenet', 'Modified_MobileFaceNet'),
     'dwseesawfacev2': ('DWseesawfaceV2', 'DWSeesawFaceV2'),
 }
 
@@ -206,7 +206,20 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
     elif model_type in TORCHVISION_MODELS:
         import torchvision.models as tv_models
         model_fn = getattr(tv_models, model_type)
-        model = model_fn(pretrained=True)
+        
+        # Use new weights parameter instead of deprecated pretrained
+        try:
+            # Try to get the default weights for this model
+            weights_attr = f"{model_type.upper()}_Weights"
+            if hasattr(tv_models, weights_attr):
+                weights_enum = getattr(tv_models, weights_attr)
+                model = model_fn(weights=weights_enum.DEFAULT)
+            else:
+                # Fallback for models without weights enum
+                model = model_fn(weights='DEFAULT')
+        except:
+            # Final fallback to None (no pretrained weights)
+            model = model_fn(weights=None)
         
         # Update final layer for correct number of classes
         if hasattr(model, 'classifier'):
