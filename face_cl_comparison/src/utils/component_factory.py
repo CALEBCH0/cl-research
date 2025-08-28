@@ -226,28 +226,18 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
     # Check custom models
     elif model_type in CUSTOM_MODELS:
         import importlib
-        import sys
-        import os
-        
-        # Add the backbones directory to Python path
-        # From face_cl_comparison/src/utils/component_factory.py -> ../../backbones
-        current_dir = os.path.dirname(__file__)  # /path/to/face_cl_comparison/src/utils
-        project_root = os.path.dirname(os.path.dirname(current_dir))  # /path/to/face_cl_comparison  
-        backbones_dir = os.path.join(os.path.dirname(project_root), 'backbones')  # /path/to/cl-research/backbones
-        backbones_dir = os.path.abspath(backbones_dir)
-        if backbones_dir not in sys.path:
-            sys.path.insert(0, backbones_dir)
         
         module_file, class_name = CUSTOM_MODELS[model_type]
         
         try:
-            module = importlib.import_module(module_file)
+            # Import from the backbones package in the project
+            module = importlib.import_module(f'backbones.{module_file}')
             model_class = getattr(module, class_name)
             model = model_class(num_classes=benchmark_info.num_classes)
             print(f"Created custom model: {model_type}")
             return model
         except (ImportError, AttributeError) as e:
-            print(f"Failed to import {model_type} from {module_file}: {e}")
+            print(f"Failed to import {model_type} from backbones.{module_file}: {e}")
             raise ValueError(f"Could not create custom model {model_type}: {e}")
         
     else:
