@@ -15,13 +15,17 @@ def auto_detect_feature_size(model: nn.Module, benchmark_info) -> int:
     device = next(model.parameters()).device if len(list(model.parameters())) > 0 else torch.device('cpu')
     
     # Create a dummy input on the same device
-    dummy_input = torch.randn(1, benchmark_info.channels, 
+    # Use 3 channels for compatibility with RGB models
+    channels = 3 if benchmark_info.channels == 1 else benchmark_info.channels
+    dummy_input = torch.randn(1, channels, 
                              benchmark_info.input_size, benchmark_info.input_size).to(device)
     
     with torch.no_grad():
         try:
-            # For wrapped models, just run forward
-            if hasattr(model, 'get_features'):
+            # For wrapped models that handle channel conversion, use original channels
+            if hasattr(model, 'get_features') or isinstance(model, nn.Module) and 'SLDAModelWrapper' in str(type(model)):
+                dummy_input = torch.randn(1, benchmark_info.channels, 
+                                         benchmark_info.input_size, benchmark_info.input_size).to(device)
                 features = model(dummy_input)
             # Try to get features from the model
             elif hasattr(model, 'features'):
@@ -106,6 +110,71 @@ AVALANCHE_MODELS = {
     'sldaresnet': 'SLDAResNetModel',
     'icarl_resnet': 'IcarlNet',
     'expert_gate': 'ExpertGate',
+}
+
+# Model feature dimensions (output of penultimate layer)
+MODEL_FEATURE_SIZES = {
+    # Face recognition models
+    'ghostfacenetv2': 256,
+    'modified_mobilefacenet': 512,
+    'dwseesawfacev2': 512,
+    
+    # EfficientNet family
+    'efficientnet_b0': 1280,
+    'efficientnet_b1': 1280,
+    'efficientnet_b2': 1408,
+    'efficientnet_b3': 1536,
+    'efficientnet_b4': 1792,
+    'efficientnet_b5': 2048,
+    'efficientnet_b6': 2304,
+    'efficientnet_b7': 2560,
+    
+    # ResNet family
+    'resnet18': 512,
+    'resnet34': 512,
+    'resnet50': 2048,
+    'resnet101': 2048,
+    'resnet152': 2048,
+    
+    # MobileNet family
+    'mobilenet_v2': 1280,
+    'mobilenet_v3_large': 1280,
+    'mobilenet_v3_small': 1024,
+    
+    # VGG family (before classifier)
+    'vgg11': 4096,
+    'vgg13': 4096,
+    'vgg16': 4096,
+    'vgg19': 4096,
+    
+    # DenseNet family
+    'densenet121': 1024,
+    'densenet161': 2208,
+    'densenet169': 1664,
+    'densenet201': 1920,
+}
+
+# Model input size requirements
+MODEL_INPUT_SIZES = {
+    # Strict requirements (architecture constraints)
+    'modified_mobilefacenet': (256, 256),  # 16x16 kernel requires this
+    'dwseesawfacev2': (256, 256),
+    
+    # Optimal sizes (trained on these)
+    'efficientnet_b0': (224, 224),
+    'efficientnet_b1': (240, 240),
+    'efficientnet_b2': (260, 260),
+    'efficientnet_b3': (300, 300),
+    'efficientnet_b4': (380, 380),
+    
+    # Face models
+    'ghostfacenetv2': (112, 112),
+    
+    # Standard models (flexible but optimal at 224)
+    'resnet18': (224, 224),
+    'resnet50': (224, 224),
+    'mobilenet_v2': (224, 224),
+    'vgg16': (224, 224),
 }
 
 TORCHVISION_MODELS = {
@@ -426,44 +495,145 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model: nn.Modul
     # Merge with additional kwargs
     all_params = {**kwargs, **params}
     
-    # Check if it's an Avalanche built-in strategy
+    # Special handling for SLDA (needs feature extraction setup)
+    slda_model = None
+    feature_size = None
+    if strategy_type == 'slda':
+        if hasattr(model, 'features') and hasattr(model, 'classifier') and hasattr(model, '_input_size'):
+            # Standard Avalanche models like SimpleMLP
+            class SLDAFeatureWrapper(nn.Module):
+                def __init__(self, base_model):
+                    super().__init__()
+                    self.base_model = base_model
+                    
+                def forward(self, x):
+                    x = x.contiguous()
+                    x = x.view(x.size(0), self.base_model._input_size)
+                    return self.base_model.features(x)
+            
+            slda_model = SLDAFeatureWrapper(model)
+            if isinstance(model.classifier, nn.Sequential):
+                for layer in reversed(model.classifier):
+                    if isinstance(layer, nn.Linear):
+                        feature_size = layer.in_features
+                        break
+                else:
+                    feature_size = 1000
+            else:
+                feature_size = model.classifier.in_features
+        else:
+            # Other models (torchvision, custom)
+            class SLDAModelWrapper(nn.Module):
+                def __init__(self, model, model_type):
+                    super().__init__()
+                    self.model = model
+                    self.model_type = model_type
+                    self.target_size = MODEL_INPUT_SIZES.get(model_type, None)
+                    grayscale_capable = ['ghostfacenetv2']
+                    self.needs_rgb = model_type not in grayscale_capable
+                    
+                def forward(self, x):
+                    if x.shape[1] == 1 and self.needs_rgb:
+                        x = x.repeat(1, 3, 1, 1)
+                    if self.target_size:
+                        x = nn.functional.interpolate(x, size=self.target_size, mode='bilinear', align_corners=False)
+                    return self.get_features(x)
+                
+                def get_features(self, x):
+                    if hasattr(self.model, 'classifier'):
+                        modules = list(self.model.children())[:-1]
+                        feature_extractor = nn.Sequential(*modules)
+                        features = feature_extractor(x)
+                    elif hasattr(self.model, 'fc'):
+                        modules = list(self.model.children())[:-1]
+                        feature_extractor = nn.Sequential(*modules)
+                        features = feature_extractor(x)
+                    else:
+                        features = self.model(x)
+                    if features.dim() > 2:
+                        features = features.view(features.size(0), -1)
+                    return features
+            
+            model_type_name = kwargs.get('model_type', 'unknown')
+            slda_model = SLDAModelWrapper(model, model_type_name)
+            model_device = next(model.parameters()).device if len(list(model.parameters())) > 0 else device
+            slda_model = slda_model.to(model_device)
+            
+            feature_size = MODEL_FEATURE_SIZES.get(model_type_name)
+            if not feature_size:
+                feature_size = auto_detect_feature_size(slda_model, benchmark_info)
+    
+    # Check if it's an Avalanche built-in strategy  
     if strategy_type in AVALANCHE_STRATEGIES:
-        avalanche_class = AVALANCHE_STRATEGIES[strategy_type]
+        avalanche_class_name = AVALANCHE_STRATEGIES[strategy_type]
         
-        if strategy_type == 'naive':
-            from avalanche.training.supervised import Naive
-            strategy = Naive(
-                model=model,
-                optimizer=optimizer,
-                criterion=criterion,
-                train_mb_size=all_params.get('batch_size', 32),
-                eval_mb_size=all_params.get('batch_size', 32) * 2,
-                device=device,
-                evaluator=eval_plugin
+        # Import the strategy class dynamically
+        try:
+            from avalanche.training.supervised import (
+                Naive, Cumulative, JointTraining, Replay, ICaRL, MIR, GDumb, 
+                GSS_greedy, GenerativeReplay, IL2M, LwF, EWC, SynapticIntelligence, 
+                MAS, LFL, AGEM, GEM, BiC, CoPE, CWRStar, PackNet, PNNStrategy, 
+                DER, ER_ACE, ER_AML, LearningToPrompt, SCR, MER, AR1
             )
-            print(f"Created Avalanche {avalanche_class}: {strategy_type}")
-            return strategy
-            
-        elif strategy_type == 'replay':
-            from avalanche.training.supervised import Replay
-            strategy = Replay(
-                model=model,
-                optimizer=optimizer,
-                criterion=criterion,
-                mem_size=all_params.get('mem_size', 500),
-                train_mb_size=all_params.get('batch_size', 32),
-                eval_mb_size=all_params.get('batch_size', 32) * 2,
-                device=device,
-                evaluator=eval_plugin
-            )
-            print(f"Created Avalanche {avalanche_class}: {strategy_type}")
-            return strategy
-            
-        elif strategy_type == 'slda':
             from avalanche.training.supervised.deep_slda import StreamingLDA
             
-            # For SLDA, we need the feature extractor part of the model
-            if hasattr(model, 'features') and hasattr(model, 'classifier') and hasattr(model, '_input_size'):
+            # Get the actual class
+            strategy_class = locals()[avalanche_class_name]
+            
+            # Standard parameters all strategies accept
+            base_params = {
+                'model': model,
+                'optimizer': optimizer, 
+                'criterion': criterion,
+                'train_mb_size': all_params.get('batch_size', 32),
+                'eval_mb_size': all_params.get('batch_size', 32) * 2,
+                'device': device,
+                'evaluator': eval_plugin,
+                'train_epochs': all_params.get('epochs', 1)
+            }
+            
+            # Strategy-specific parameters
+            if strategy_type == 'replay':
+                base_params['mem_size'] = all_params.get('mem_size', 500)
+            elif strategy_type == 'ewc':
+                base_params['ewc_lambda'] = all_params.get('ewc_lambda', 0.4)
+            elif strategy_type == 'icarl':
+                base_params['memory_size'] = all_params.get('memory_size', 2000)
+            elif strategy_type == 'lwf':
+                base_params['alpha'] = all_params.get('alpha', 1.0)
+                base_params['temperature'] = all_params.get('temperature', 2.0)
+            elif strategy_type == 'slda':
+                # SLDA has different parameters
+                base_params = {
+                    'slda_model': slda_model,
+                    'criterion': criterion,
+                    'input_size': feature_size,
+                    'num_classes': benchmark_info.num_classes,
+                    'shrinkage_param': all_params.get('shrinkage_param', 1e-4),
+                    'streaming_update_sigma': all_params.get('streaming_update_sigma', True),
+                    'train_mb_size': all_params.get('batch_size', 32),
+                    'eval_mb_size': all_params.get('batch_size', 32) * 2,
+                    'device': device,
+                    'evaluator': eval_plugin
+                }
+            elif strategy_type == 'agem':
+                base_params['patterns_per_exp'] = all_params.get('patterns_per_exp', 256)
+                base_params['sample_size'] = all_params.get('sample_size', 256) 
+            elif strategy_type == 'gem':
+                base_params['patterns_per_exp'] = all_params.get('patterns_per_exp', 256)
+                base_params['memory_strength'] = all_params.get('memory_strength', 0.5)
+                
+            # Create the strategy
+            strategy = strategy_class(**base_params)
+            print(f"Created Avalanche {avalanche_class_name}: {strategy_type}")
+            return strategy
+            
+        except (ImportError, KeyError) as e:
+            print(f"Could not create Avalanche strategy {strategy_type}: {e}")
+            # Fall through to custom handling
+    
+    # Check if it's a custom strategy
+        if hasattr(model, 'features') and hasattr(model, 'classifier') and hasattr(model, '_input_size'):
                 # Standard Avalanche models like SimpleMLP - use features + proper input handling
                 class SLDAFeatureWrapper(nn.Module):
                     def __init__(self, base_model):
@@ -492,25 +662,35 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model: nn.Modul
             else:
                 # For other models (torchvision, custom), create a wrapper that handles resizing
                 class SLDAModelWrapper(nn.Module):
+                    """
+                    Wrapper for models to handle:
+                    1. Channel conversion (grayscale to RGB)
+                    2. Image resizing to model requirements
+                    3. Feature extraction from penultimate layer
+                    """
                     def __init__(self, model, model_type):
                         super().__init__()
                         self.model = model
                         self.model_type = model_type
                         
-                        # Set target size for model-specific input requirements
-                        if model_type == 'dwseesawfacev2' or 'dwseesaw' in model_type:
-                            self.target_size = (256, 256)
-                        elif model_type == 'ghostfacenetv2' or 'ghostface' in model_type:
-                            self.target_size = (112, 112)
-                        elif 'efficientnet' in model_type:
-                            self.target_size = (224, 224)
-                        elif model_type == 'modified_mobilefacenet' or 'mobilefacenet' in model_type:
-                            self.target_size = (256, 256)
-                        else:
-                            self.target_size = None
+                        # Get requirements from dictionaries
+                        self.target_size = MODEL_INPUT_SIZES.get(model_type, None)
+                        
+                        # Determine if RGB conversion needed
+                        # Face models that can handle grayscale
+                        grayscale_capable = ['ghostfacenetv2']
+                        self.needs_rgb = model_type not in grayscale_capable
                         
                     def forward(self, x):
-                        # Resize input if needed
+                        # Handle grayscale to RGB conversion if needed
+                        if x.shape[1] == 1 and self.needs_rgb:
+                            # SmartEye IR images are grayscale (1 channel)
+                            # Convert to pseudo-RGB by duplicating the channel 3 times: (gray, gray, gray)
+                            # This is equivalent to torch.cat([x, x, x], dim=1) but more efficient
+                            x = x.repeat(1, 3, 1, 1)
+                            # Now x has shape [batch, 3, H, W] for RGB models
+                        
+                        # Resize input if needed (after channel conversion)
                         if self.target_size:
                             x = nn.functional.interpolate(x, size=self.target_size, mode='bilinear', align_corners=False)
                         
@@ -547,18 +727,14 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model: nn.Modul
                 model_device = next(model.parameters()).device if len(list(model.parameters())) > 0 else device
                 slda_model = slda_model.to(model_device)
                 
-                # Auto-detect feature size using the wrapper
-                feature_size = auto_detect_feature_size(slda_model, benchmark_info)
-                
-                # Hardcoded feature sizes for known face models as fallback
-                if feature_size > 10000 or model_type_name in ['ghostfacenetv2', 'modified_mobilefacenet', 'dwseesawfacev2']:
-                    face_model_features = {
-                        'ghostfacenetv2': 256,  # or 512 depending on config
-                        'modified_mobilefacenet': 512,
-                        'dwseesawfacev2': 512,
-                    }
-                    feature_size = face_model_features.get(model_type_name, 512)
+                # Look up feature size from dictionary, only auto-detect if unknown
+                feature_size = MODEL_FEATURE_SIZES.get(model_type_name)
+                if feature_size:
                     print(f"Using known feature size for {model_type_name}: {feature_size}")
+                else:
+                    # Only auto-detect for unknown models
+                    feature_size = auto_detect_feature_size(slda_model, benchmark_info)
+                    print(f"Auto-detected feature size for {model_type_name}: {feature_size}")
                     
                 print(f"Using wrapped model for SLDA: feature_size={feature_size}")
             
