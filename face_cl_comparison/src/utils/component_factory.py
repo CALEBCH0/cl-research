@@ -6,6 +6,94 @@ from typing import Dict, Any, Tuple, Optional
 from src.utils.benchmark_info import BenchmarkInfo
 
 
+def _adapt_model_input_channels(model: nn.Module, expected_channels: int, model_type: str) -> nn.Module:
+    """
+    Efficiently adapt a model's first convolutional layer to handle different input channels.
+    
+    Args:
+        model: The model to adapt
+        expected_channels: Number of channels the model will actually receive (e.g., 3 after grayscale->RGB conversion)
+        model_type: Type of model for specific handling
+        
+    Returns:
+        Adapted model
+    """
+    import torch.nn as nn
+    
+    # Find the first convolutional layer
+    first_conv = None
+    first_conv_name = None
+    
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Conv2d):
+            first_conv = module
+            first_conv_name = name
+            break
+    
+    if first_conv is None:
+        print(f"Warning: No Conv2d layer found in {model_type}")
+        return model
+    
+    current_in_channels = first_conv.in_channels
+    
+    if current_in_channels == expected_channels:
+        # Already matches, no adaptation needed
+        return model
+    
+    print(f"Adapting {model_type}: {current_in_channels} -> {expected_channels} input channels")
+    
+    # Create new first conv layer with correct input channels
+    new_first_conv = nn.Conv2d(
+        in_channels=expected_channels,
+        out_channels=first_conv.out_channels,
+        kernel_size=first_conv.kernel_size,
+        stride=first_conv.stride,
+        padding=first_conv.padding,
+        dilation=first_conv.dilation,
+        groups=first_conv.groups,
+        bias=first_conv.bias is not None,
+        padding_mode=first_conv.padding_mode
+    )
+    
+    # Smart weight initialization: handle channel dimension change
+    with torch.no_grad():
+        if expected_channels > current_in_channels:
+            # Expanding channels: replicate weights across new channels
+            old_weight = first_conv.weight.data
+            new_weight = old_weight.repeat(1, expected_channels // current_in_channels, 1, 1)
+            # Handle remainder channels
+            remainder = expected_channels % current_in_channels
+            if remainder > 0:
+                new_weight = torch.cat([new_weight, old_weight[:, :remainder, :, :]], dim=1)
+            new_first_conv.weight.data = new_weight / (expected_channels / current_in_channels)  # Normalize to maintain magnitude
+        else:
+            # Reducing channels: average across input channels
+            old_weight = first_conv.weight.data
+            new_first_conv.weight.data = old_weight[:, :expected_channels, :, :].clone()
+        
+        # Copy bias if it exists
+        if first_conv.bias is not None:
+            new_first_conv.bias.data = first_conv.bias.data.clone()
+    
+    # Replace the first conv layer in the model
+    _replace_module_by_name(model, first_conv_name, new_first_conv)
+    
+    return model
+
+
+def _replace_module_by_name(model: nn.Module, target_name: str, new_module: nn.Module):
+    """Replace a module in the model by its name."""
+    name_parts = target_name.split('.')
+    parent = model
+    
+    # Navigate to the parent of the target module
+    for part in name_parts[:-1]:
+        parent = getattr(parent, part)
+    
+    # Replace the target module
+    setattr(parent, name_parts[-1], new_module)
+
+
 def auto_detect_feature_size(model: nn.Module, benchmark_info) -> int:
     """
     Auto-detect the feature size of a model by doing a forward pass.
@@ -253,12 +341,12 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
                 model = model_class(
                     image_size=benchmark_info.image_size[0],  # Assuming square images
                     num_features=256,  # Standard face embedding dimension
-                    channels=benchmark_info.channels
+                    channels=benchmark_info.channels  # Use actual dataset channels
                 )
             elif model_type == 'modified_mobilefacenet':
                 # Modified_MobileFaceNet: num_features is embedding dim (e.g. 512), not num_classes  
                 model = model_class(
-                    input_size=(benchmark_info.channels, *benchmark_info.image_size),
+                    input_size=(benchmark_info.channels, *benchmark_info.image_size),  # Use actual dataset channels
                     num_features=512  # Standard face embedding dimension
                 )
             elif model_type == 'dwseesawfacev2':
@@ -267,6 +355,9 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
             else:
                 # Default case
                 model = model_class(num_classes=benchmark_info.num_classes)
+            
+            # Adapt model for actual input channels if different from what model expects
+            model = _adapt_model_input_channels(model, expected_channels=3, model_type=model_type)  # SLDA wrapper will convert to 3 channels
                 
             print(f"Created custom model: {model_type}")
             return model
