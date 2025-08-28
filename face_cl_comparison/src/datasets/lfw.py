@@ -7,6 +7,7 @@ from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
 from pathlib import Path
 from src.datasets.subset_utils import DatasetSubsetConfig, create_cl_benchmark_from_subset
+from src.utils.benchmark_info import BenchmarkInfo
 
 
 def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20, 
@@ -137,18 +138,18 @@ def create_lfw_benchmark(n_experiences=10, min_faces_per_person=20,
         class_ids_from_zero_in_each_exp=False  # Use global class IDs
     )
     
-    # Dataset info
-    dataset_info = {
-        'num_classes': n_classes,
-        'num_train_samples': len(train_indices),
-        'num_test_samples': len(test_indices),
-        'image_shape': (1, image_size[0], image_size[1]),  # (C, H, W)
-        'people_names': lfw_people.target_names.tolist(),
-        'n_experiences': valid_n_experiences,  # Actual number of experiences used
-        'classes_per_exp': n_classes // valid_n_experiences
-    }
+    # Create BenchmarkInfo object
+    benchmark_info = BenchmarkInfo(
+        num_classes=n_classes,
+        image_size=image_size,
+        channels=1,  # LFW is grayscale
+        num_train=len(train_indices),
+        num_test=len(test_indices),
+        n_experiences=valid_n_experiences,
+        class_names={i: name for i, name in enumerate(lfw_people.target_names)}
+    )
     
-    return benchmark, dataset_info
+    return benchmark, benchmark_info
 
 
 # Cache for loaded LFW data to avoid reloading
@@ -240,18 +241,18 @@ def create_lfw_subset_benchmark(n_identities=100, n_experiences=10,
         class_ids_from_zero_in_each_exp=False
     )
     
-    # Updated dataset info
-    dataset_info = {
-        'num_classes': n_identities,
-        'num_train_samples': len(train_indices),
-        'num_test_samples': len(test_indices),
-        'image_shape': (1, image_size[0], image_size[1]),
-        'selected_people': [info_full['people_names'][i] for i in selected_classes],
-        'n_experiences': valid_n_experiences,
-        'classes_per_exp': n_identities // valid_n_experiences
-    }
+    # Create BenchmarkInfo object
+    benchmark_info = BenchmarkInfo(
+        num_classes=n_identities,
+        image_size=image_size,
+        channels=1,  # LFW is grayscale
+        num_train=len(train_indices),
+        num_test=len(test_indices),
+        n_experiences=valid_n_experiences,
+        class_names={i: info_full.class_names[orig_i] for i, orig_i in enumerate(selected_classes)}
+    )
     
-    return benchmark, dataset_info
+    return benchmark, benchmark_info
 
 
 def create_lfw_controlled_benchmark(
@@ -352,17 +353,23 @@ def create_lfw_controlled_benchmark(
         class_names=class_names.tolist()
     )
     
-    # Add LFW-specific info
-    dataset_info['dataset_name'] = 'lfw'
-    dataset_info['image_shape'] = (1, image_size[0], image_size[1])
-    dataset_info['original_num_classes'] = len(class_names)
+    # Convert dict info to BenchmarkInfo
+    benchmark_info = BenchmarkInfo(
+        num_classes=dataset_info['num_classes'],
+        image_size=image_size,
+        channels=1,  # LFW is grayscale  
+        num_train=dataset_info['num_train_samples'],
+        num_test=dataset_info['num_test_samples'],
+        n_experiences=dataset_info['n_experiences'],
+        class_names=dataset_info.get('selected_class_names', {})
+    )
     
     print(f"\nCreated benchmark with:")
-    print(f"  Classes: {dataset_info['num_classes']} "
-          f"(selected from {dataset_info['original_num_classes']})")
-    print(f"  Experiences: {dataset_info['n_experiences']} "
-          f"({dataset_info['classes_per_exp']} classes per exp)")
-    print(f"  Train samples: {dataset_info['num_train_samples']}")
-    print(f"  Test samples: {dataset_info['num_test_samples']}")
+    print(f"  Classes: {benchmark_info.num_classes} "
+          f"(selected from {len(class_names)})")
+    print(f"  Experiences: {benchmark_info.n_experiences} "
+          f"({benchmark_info.num_classes // benchmark_info.n_experiences} classes per exp)")
+    print(f"  Train samples: {benchmark_info.num_train}")
+    print(f"  Test samples: {benchmark_info.num_test}")
     
-    return benchmark, dataset_info
+    return benchmark, benchmark_info

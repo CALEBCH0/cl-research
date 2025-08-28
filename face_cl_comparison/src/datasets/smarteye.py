@@ -10,6 +10,7 @@ from avalanche.benchmarks import nc_benchmark
 from avalanche.benchmarks.utils import as_classification_dataset
 from avalanche.benchmarks.scenarios.dataset_scenario import benchmark_from_datasets
 from collections import defaultdict
+from src.utils.benchmark_info import BenchmarkInfo
 
 
 class SmartEyeFaceDataset(Dataset):
@@ -245,21 +246,18 @@ def create_smarteye_benchmark(
     
     print(f"Train/test split: {len(train_indices)} train, {len(test_indices)} test")
     
-    # Create info dictionary
-    info = {
-        'num_classes': num_classes,
-        'num_samples': len(X),
-        'num_train': len(train_indices),
-        'num_test': len(test_indices),
-        'image_size': image_size,
-        'channels': 1,  # Grayscale IR images
-        'input_size': image_size[0] * image_size[1],
-        'n_experiences': n_experiences,
-        'class_names': dataset.idx_to_class,
-        'data_type': 'cropdata' if use_cropdata else 'rawdata'
-    }
+    # Create BenchmarkInfo object with all metadata
+    benchmark_info = BenchmarkInfo(
+        num_classes=num_classes,
+        image_size=image_size,
+        channels=1,  # Grayscale IR images
+        num_train=len(train_indices),
+        num_test=len(test_indices),
+        n_experiences=n_experiences,
+        class_names=dataset.idx_to_class
+    )
     
-    return benchmark, info
+    return benchmark, benchmark_info
 
 
 def create_smarteye_controlled_benchmark(
