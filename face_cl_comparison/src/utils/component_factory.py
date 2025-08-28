@@ -246,11 +246,35 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
             # Import from the backbones package in the project
             module = importlib.import_module(f'backbones.{module_file}')
             model_class = getattr(module, class_name)
-            model = model_class(num_classes=benchmark_info.num_classes)
+            
+            # Handle different constructor signatures for each model
+            if model_type == 'ghostfacenetv2':
+                # GhostFaceNetV2: num_features is embedding dim (e.g. 256), not num_classes
+                model = model_class(
+                    image_size=benchmark_info.image_size[0],  # Assuming square images
+                    num_features=256,  # Standard face embedding dimension
+                    channels=benchmark_info.channels
+                )
+            elif model_type == 'modified_mobilefacenet':
+                # Modified_MobileFaceNet: num_features is embedding dim (e.g. 512), not num_classes  
+                model = model_class(
+                    input_size=(benchmark_info.channels, *benchmark_info.image_size),
+                    num_features=512  # Standard face embedding dimension
+                )
+            elif model_type == 'dwseesawfacev2':
+                # Need to check DWSeesawFaceV2 constructor
+                model = model_class(num_classes=benchmark_info.num_classes)
+            else:
+                # Default case
+                model = model_class(num_classes=benchmark_info.num_classes)
+                
             print(f"Created custom model: {model_type}")
             return model
         except (ImportError, AttributeError) as e:
             print(f"Failed to import {model_type} from backbones.{module_file}: {e}")
+            raise ValueError(f"Could not create custom model {model_type}: {e}")
+        except Exception as e:
+            print(f"Failed to create {model_type} model: {e}")
             raise ValueError(f"Could not create custom model {model_type}: {e}")
         
     else:
