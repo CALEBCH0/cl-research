@@ -11,6 +11,12 @@ A flexible framework for comparing continual learning strategies on face recogni
   - LFW - Labeled Faces in the Wild (158+ identities) - Real-world conditions
   - Custom LFW subsets (e.g., lfw_50, lfw_100, lfw_200)
   - SmartEye IR Face Dataset (17 identities) - **Fixed at 17 experiences for true continual learning**
+  - FaceLandmark IR Dataset (94 identities) - Large-scale IR face dataset
+    - **Valid n_experiences options**: 1, 2, 47, 94
+    - 94 experiences: 1 person per experience (most challenging)
+    - 47 experiences: 2 people per experience (balanced)
+    - 2 experiences: 47 people per experience (minimal forgetting)
+    - 1 experience: All 94 people at once (no continual learning)
 - **Custom Backbone Models**: Support for importing face recognition models from `backbones/` directory
   - DWSeesawFaceV2
   - GhostFaceNetV2
@@ -62,6 +68,11 @@ python runner.py --exp large_scale_faces
 
 # Or directly with Python
 python runner.py --exp NCM_SLDA_iCaRL
+
+# Run FaceLandmark experiments (94 identities)
+python runner.py --config configs/experiments/flmk_light.yaml    # Quick test (2 strategies, 2 experiences)
+python runner.py --config configs/experiments/flmk_strats.yaml   # Test 3 key strategies (47 experiences)
+python runner.py --config configs/experiments/flmk_comprehensive.yaml  # Full comparison (multiple splits)
 ```
 
 ## 🛑 Stopping Experiments
