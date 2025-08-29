@@ -81,6 +81,133 @@ def _adapt_model_input_channels(model: nn.Module, expected_channels: int, model_
     return model
 
 
+def _add_model_preprocessing(model: nn.Module, model_type: str, benchmark_info) -> nn.Module:
+    """
+    Add preprocessing wrapper to models to handle dataset-to-model requirements.
+    
+    Args:
+        model: The base model
+        model_type: Type of model
+        benchmark_info: Dataset information
+        
+    Returns:
+        Model with preprocessing wrapper
+    """
+    class ModelWithPreprocessing(nn.Module):
+        def __init__(self, base_model, model_type, benchmark_info):
+            super().__init__()
+            self.base_model = base_model
+            self.model_type = model_type
+            
+            # Get model's required input format (height, width, channels)
+            model_input_spec = MODEL_INPUT_SIZES.get(model_type, (*benchmark_info.image_size, benchmark_info.channels))
+            self.target_size = (model_input_spec[0], model_input_spec[1])  # (height, width)
+            self.target_channels = model_input_spec[2] if len(model_input_spec) > 2 else benchmark_info.channels
+            
+            # Determine if channel conversion is needed
+            self.needs_channel_conversion = (
+                benchmark_info.channels != self.target_channels
+            )
+            
+        def forward(self, x):
+            # 1. Channel conversion if needed
+            if self.needs_channel_conversion:
+                if x.shape[1] == 1 and self.target_channels == 3:
+                    # Convert grayscale to RGB by duplicating channels
+                    x = x.repeat(1, 3, 1, 1)
+                elif x.shape[1] == 3 and self.target_channels == 1:
+                    # Convert RGB to grayscale (unlikely but handled)
+                    x = x.mean(dim=1, keepdim=True)
+            
+            # 2. Resize to model's required size if needed
+            if len(x.shape) >= 4:  # Check if x has spatial dimensions
+                current_size = (x.shape[2], x.shape[3])
+                if current_size != self.target_size:
+                    x = nn.functional.interpolate(
+                        x, size=self.target_size, 
+                        mode='bilinear', align_corners=False
+                    )
+            
+            # 3. Forward through base model
+            return self.base_model(x)
+    
+    return ModelWithPreprocessing(model, model_type, benchmark_info)
+
+
+def _create_feature_extractor(model: nn.Module, model_type: str, benchmark_info) -> nn.Module:
+    """
+    Create a feature extractor from a model for SLDA.
+    Models already have preprocessing built-in, so just extract features.
+    
+    Args:
+        model: Model with preprocessing
+        model_type: Type of model
+        benchmark_info: Dataset information
+        
+    Returns:
+        Feature extractor model
+    """
+    class FeatureExtractor(nn.Module):
+        def __init__(self, base_model):
+            super().__init__()
+            self.base_model = base_model
+            
+        def forward(self, x):
+            # If the base model has preprocessing wrapper, it handles input conversion
+            # If it's an Avalanche model, handle reshaping
+            if hasattr(self.base_model, '_input_size'):
+                # Avalanche models like SimpleMLP need input reshaping
+                x = x.contiguous().view(x.size(0), self.base_model._input_size)
+                return self.base_model.features(x)
+            elif hasattr(self.base_model, 'base_model'):
+                # Our preprocessing wrapper - extract features from the wrapped model
+                wrapped_model = self.base_model.base_model
+                
+                # Apply preprocessing manually to input (don't run full model)
+                if hasattr(self.base_model, 'needs_channel_conversion') and self.base_model.needs_channel_conversion:
+                    if hasattr(self.base_model, 'target_channels'):
+                        if x.shape[1] == 1 and self.base_model.target_channels == 3:
+                            x = x.repeat(1, 3, 1, 1)
+                        elif x.shape[1] == 3 and self.base_model.target_channels == 1:
+                            x = x.mean(dim=1, keepdim=True)
+                
+                if hasattr(self.base_model, 'target_size') and len(x.shape) >= 4:
+                    current_size = (x.shape[2], x.shape[3])
+                    if current_size != self.base_model.target_size:
+                        x = nn.functional.interpolate(x, size=self.base_model.target_size, mode='bilinear', align_corners=False)
+                
+                # Extract features from preprocessed input
+                return self._extract_features(wrapped_model, x)
+            else:
+                # Standard model - extract features directly
+                return self._extract_features(self.base_model, x)
+        
+        def _extract_features(self, model, x):
+            """Extract features from penultimate layer."""
+            if hasattr(model, 'classifier'):
+                # Models with classifier (EfficientNet, etc)
+                modules = list(model.children())[:-1]
+                feature_extractor = nn.Sequential(*modules)
+                features = feature_extractor(x)
+            elif hasattr(model, 'fc'):
+                # ResNet-style models
+                modules = list(model.children())[:-1]
+                feature_extractor = nn.Sequential(*modules)
+                features = feature_extractor(x)
+            else:
+                # For face recognition models, use final embeddings (fast & effective)
+                # These models are designed to output meaningful feature embeddings
+                features = model(x)
+            
+            # Flatten if needed
+            if features.dim() > 2:
+                features = features.view(features.size(0), -1)
+                
+            return features
+    
+    return FeatureExtractor(model)
+
+
 def _replace_module_by_name(model: nn.Module, target_name: str, new_module: nn.Module):
     """Replace a module in the model by its name."""
     name_parts = target_name.split('.')
@@ -94,7 +221,7 @@ def _replace_module_by_name(model: nn.Module, target_name: str, new_module: nn.M
     setattr(parent, name_parts[-1], new_module)
 
 
-def auto_detect_feature_size(model: nn.Module, benchmark_info) -> int:
+def auto_detect_feature_size(model: nn.Module, benchmark_info, model_type: str = None) -> int:
     """
     Auto-detect the feature size of a model by doing a forward pass.
     """
@@ -104,11 +231,14 @@ def auto_detect_feature_size(model: nn.Module, benchmark_info) -> int:
     device = next(model.parameters()).device if len(list(model.parameters())) > 0 else torch.device('cpu')
     
     # Create a dummy input on the same device
-    # Use 3 channels for compatibility with RGB models
-    channels = 3 if benchmark_info.channels == 1 else benchmark_info.channels
-    dummy_input = torch.randn(1, channels, 
-                             benchmark_info.image_size[0], 
-                             benchmark_info.image_size[1], 
+    # Get model's required input format
+    model_input_spec = MODEL_INPUT_SIZES.get(model_type, (*benchmark_info.image_size, benchmark_info.channels))
+    target_height, target_width = model_input_spec[0], model_input_spec[1]
+    target_channels = model_input_spec[2] if len(model_input_spec) > 2 else benchmark_info.channels
+    
+    dummy_input = torch.randn(1, target_channels, 
+                             target_height, 
+                             target_width, 
                              device=device)
     
     try:
@@ -125,22 +255,24 @@ def auto_detect_feature_size(model: nn.Module, benchmark_info) -> int:
 
 # Model requirements dictionaries
 MODEL_INPUT_SIZES = {
-    'ghostfacenetv2': (112, 112),
-    'modified_mobilefacenet': (256, 256),
-    'dwseesawfacev2': (256, 256),
-    'efficientnet_b0': (224, 224),
-    'efficientnet_b1': (240, 240),
-    'efficientnet_b2': (260, 260),
-    'efficientnet_b3': (300, 300),
-    'efficientnet_b4': (380, 380),
-    'resnet18': (224, 224),
-    'resnet50': (224, 224),
-    'mobilenet_v2': (224, 224),
+    # Format: (height, width, channels) - channels: 1=grayscale, 3=RGB
+    'ghostfacenetv2': (112, 112, 1),
+    'modified_mobilefacenet': (256, 256, 1),
+    'dwseesawfacev2': (256, 256, 1),
+    'efficientnet_b0': (224, 224, 3),
+    'efficientnet_b1': (240, 240, 3),
+    'efficientnet_b2': (260, 260, 3),
+    'efficientnet_b3': (300, 300, 3),
+    'efficientnet_b4': (380, 380, 3),
+    'resnet18': (224, 224, 3),
+    'resnet50': (224, 224, 3),
+    'mobilenet_v2': (224, 224, 3),
 }
 
 MODEL_FEATURE_SIZES = {
+    # Face recognition models - confirmed by auto-detection
     'ghostfacenetv2': 256,
-    'modified_mobilefacenet': 512,
+    'modified_mobilefacenet': 512,  
     'dwseesawfacev2': 512,
     'efficientnet_b0': 1280,
     'efficientnet_b1': 1280,
@@ -287,6 +419,8 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
         elif avalanche_class == 'SimpleCNN':
             model = SimpleCNN(num_classes=benchmark_info.num_classes)
         
+        # Store model type for later use 
+        model._model_type = model_type
         print(f"Created Avalanche {avalanche_class}: {model_type}")
         return model
         
@@ -321,6 +455,11 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
             in_features = model.fc.in_features
             model.fc = nn.Linear(in_features, benchmark_info.num_classes)
             
+        # Add preprocessing wrapper to handle channel/size conversions
+        model = _add_model_preprocessing(model, model_type, benchmark_info)
+        
+        # Store model type for later use 
+        model._model_type = model_type
         print(f"Created torchvision {model_type}: {model_type}")
         return model
         
@@ -338,15 +477,19 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
             # Handle different constructor signatures for each model
             if model_type == 'ghostfacenetv2':
                 # GhostFaceNetV2: num_features is embedding dim (e.g. 256), not num_classes
+                # Use model's required input size for optimal performance
+                required_size = MODEL_INPUT_SIZES.get(model_type, benchmark_info.image_size)
                 model = model_class(
-                    image_size=benchmark_info.image_size[0],  # Assuming square images
+                    image_size=required_size[0],  # Use model's required size (assuming square)
                     num_features=256,  # Standard face embedding dimension
-                    channels=benchmark_info.channels  # Use actual dataset channels
+                    channels=benchmark_info.channels
                 )
             elif model_type == 'modified_mobilefacenet':
                 # Modified_MobileFaceNet: num_features is embedding dim (e.g. 512), not num_classes  
+                # Use model's required input size for proper architecture compatibility
+                required_size = MODEL_INPUT_SIZES.get(model_type, benchmark_info.image_size)
                 model = model_class(
-                    input_size=(benchmark_info.channels, *benchmark_info.image_size),  # Use actual dataset channels
+                    input_size=(benchmark_info.channels, *required_size),
                     num_features=512  # Standard face embedding dimension
                 )
             elif model_type == 'dwseesawfacev2':
@@ -356,9 +499,11 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
                 # Default case
                 model = model_class(num_classes=benchmark_info.num_classes)
             
-            # Adapt model for actual input channels if different from what model expects
-            model = _adapt_model_input_channels(model, expected_channels=3, model_type=model_type)  # SLDA wrapper will convert to 3 channels
-                
+            # Wrap model with preprocessing to handle dataset requirements
+            model = _add_model_preprocessing(model, model_type, benchmark_info)
+            
+            # Store model type for later use (after preprocessing wrapper)
+            model._model_type = model_type
             print(f"Created custom model: {model_type}")
             return model
         except (ImportError, AttributeError) as e:
@@ -420,118 +565,32 @@ def create_strategy_from_config(strategy_config: Dict[str, Any], model, benchmar
             # Get the actual class
             strategy_class = locals()[avalanche_class_name]
             
-            # Special handling for SLDA - needs custom model wrapper
+            # SLDA uses different parameters but no longer needs custom wrapper
             if strategy_type == 'slda':
-                # Get model type from kwargs or strategy config
-                model_type_name = kwargs.get('model_type', strategy_config.get('model_type', 'unknown'))
+                # Get model type - try multiple sources in order of preference
+                model_type_name = (
+                    kwargs.get('model_type') or                    # 1. Explicit parameter
+                    strategy_config.get('model_type') or          # 2. Strategy config  
+                    getattr(model, '_model_type', None) or        # 3. Stored in model during creation
+                    'unknown'                                      # 4. Fallback
+                )
                 
-                # Create SLDA-specific model wrapper
-                if hasattr(model, 'features') and hasattr(model, 'classifier') and hasattr(model, '_input_size'):
-                    # Standard Avalanche models like SimpleMLP - use features + proper input handling
-                    class SLDAFeatureWrapper(nn.Module):
-                        def __init__(self, base_model):
-                            super().__init__()
-                            self.base_model = base_model
-                            
-                        def forward(self, x):
-                            # Handle input reshaping like SimpleMLP does
-                            x = x.contiguous()
-                            x = x.view(x.size(0), self.base_model._input_size)
-                            return self.base_model.features(x)
-                    
-                    slda_model = SLDAFeatureWrapper(model)
-                    # Get feature size from classifier
-                    if isinstance(model.classifier, nn.Sequential):
-                        # Find the last Linear layer in Sequential
-                        for layer in reversed(model.classifier):
-                            if isinstance(layer, nn.Linear):
-                                feature_size = layer.in_features
-                                break
-                        else:
-                            feature_size = 1000  # fallback
-                    else:
-                        feature_size = model.classifier.in_features
-                    print(f"Using Avalanche model features for SLDA: feature_size={feature_size}")
+                print(f"Debug: Using model_type_name: {model_type_name}")
+                
+                # Create feature extractor for SLDA (penultimate layer)
+                feature_extractor = _create_feature_extractor(model, model_type_name, benchmark_info)
+                
+                # Get feature size from dictionary or auto-detect
+                feature_size = MODEL_FEATURE_SIZES.get(model_type_name)
+                if not feature_size:
+                    feature_size = auto_detect_feature_size(feature_extractor, benchmark_info, model_type_name)
+                    print(f"Auto-detected feature size for {model_type_name}: {feature_size}")
                 else:
-                    # Other models (torchvision, custom)
-                    class SLDAModelWrapper(nn.Module):
-                        """
-                        Wrapper for models to handle:
-                        1. Channel conversion (grayscale to RGB)
-                        2. Image resizing to model requirements
-                        3. Feature extraction from penultimate layer
-                        """
-                        def __init__(self, model, model_type):
-                            super().__init__()
-                            self.model = model
-                            self.model_type = model_type
-                            
-                            # Get requirements from dictionaries
-                            self.target_size = MODEL_INPUT_SIZES.get(model_type, None)
-                            
-                            # Determine if RGB conversion needed
-                            # Face models that can handle grayscale
-                            grayscale_capable = ['ghostfacenetv2']
-                            self.needs_rgb = model_type not in grayscale_capable
-                            
-                        def forward(self, x):
-                            # Handle grayscale to RGB conversion if needed
-                            if x.shape[1] == 1 and self.needs_rgb:
-                                # SmartEye IR images are grayscale (1 channel)
-                                # Convert to pseudo-RGB by duplicating the channel 3 times: (gray, gray, gray)
-                                # This is equivalent to torch.cat([x, x, x], dim=1) but more efficient
-                                x = x.repeat(1, 3, 1, 1)
-                                # Now x has shape [batch, 3, H, W] for RGB models
-                            
-                            # Resize input if needed (after channel conversion)
-                            if self.target_size:
-                                x = nn.functional.interpolate(x, size=self.target_size, mode='bilinear', align_corners=False)
-                            
-                            # Get penultimate layer features (not final classification)
-                            return self.get_features(x)
-                            
-                        def get_features(self, x):
-                            # Extract features from penultimate layer
-                            if hasattr(self.model, 'classifier'):
-                                # Models with classifier (EfficientNet, etc)
-                                modules = list(self.model.children())[:-1]
-                                feature_extractor = nn.Sequential(*modules)
-                                features = feature_extractor(x)
-                            elif hasattr(self.model, 'fc'):
-                                # ResNet-style models
-                                modules = list(self.model.children())[:-1]
-                                feature_extractor = nn.Sequential(*modules)
-                                features = feature_extractor(x)
-                            else:
-                                # Custom models - assume they output features directly
-                                features = self.model(x)
-                            
-                            # Flatten if needed
-                            if features.dim() > 2:
-                                features = features.view(features.size(0), -1)
-                                
-                            return features
-                    
-                    slda_model = SLDAModelWrapper(model, model_type_name)
-                    
-                    # Move wrapper to same device as model
-                    model_device = next(model.parameters()).device if len(list(model.parameters())) > 0 else device
-                    slda_model = slda_model.to(model_device)
-                    
-                    # Look up feature size from dictionary, only auto-detect if unknown
-                    feature_size = MODEL_FEATURE_SIZES.get(model_type_name)
-                    if feature_size:
-                        print(f"Using known feature size for {model_type_name}: {feature_size}")
-                    else:
-                        # Only auto-detect for unknown models
-                        feature_size = auto_detect_feature_size(slda_model, benchmark_info)
-                        print(f"Auto-detected feature size for {model_type_name}: {feature_size}")
-                        
-                    print(f"Using wrapped model for SLDA: feature_size={feature_size}")
+                    print(f"Using known feature size for {model_type_name}: {feature_size}")
                 
                 # SLDA-specific parameters
                 base_params = {
-                    'slda_model': slda_model,
+                    'slda_model': feature_extractor,
                     'criterion': criterion,
                     'input_size': feature_size,
                     'num_classes': benchmark_info.num_classes,

@@ -1,82 +1,223 @@
-# Backbone comparison experiment
+# Complete backbone comparison on SmartEye IR face dataset with SLDA
 name: backbone_comparison
-description: Compare different backbone architectures using SLDA strategy
+description: Compare all available backbone architectures using SLDA on SmartEye faces
 
-# Compare different model architectures with SLDA
-comparison:
-  # Vary only the backbone architecture
-  vary:
-    model.backbone.name:
-      # Lightweight models
-      - mobilenetv1         # ~4.2M params (Avalanche)
-      - mobilenetv3_small   # ~2.5M params (timm: mobilenetv3_small_100)
-      - mobilenetv3_large   # ~5.4M params (timm: mobilenetv3_large_100)
-      - efficientnet_b0     # ~5.3M params
-      
-      # Medium models
-      - resnet18            # ~11.7M params
-      - efficientnet_b1     # ~7.8M params (our default)
-      - efficientnet_b2     # ~9.1M params
-      
-      # Larger models
-      - resnet50            # ~25.6M params
-      - efficientnet_b3     # ~12.2M params
-      - efficientnet_b4     # ~19.3M params
+vary:
+  model:
+    # Standard Computer Vision Models
+    # ==============================
+    
+    # EfficientNet Family (Lightweight to Medium)
+    - name: efficientnet_b0
+      type: efficientnet_b0
+      params:
+        pretrained: true
+        
+    - name: efficientnet_b1
+      type: efficientnet_b1
+      params:
+        pretrained: true
+        
+    - name: efficientnet_b2
+      type: efficientnet_b2
+      params:
+        pretrained: true
+        
+    - name: efficientnet_b3
+      type: efficientnet_b3
+      params:
+        pretrained: true
+        
+    - name: efficientnet_b4
+      type: efficientnet_b4
+      params:
+        pretrained: true
+        
+    # ResNet Family
+    - name: resnet18
+      type: resnet18
+      params:
+        pretrained: true
+        
+    - name: resnet34
+      type: resnet34
+      params:
+        pretrained: true
+        
+    - name: resnet50
+      type: resnet50
+      params:
+        pretrained: true
+        
+    # MobileNet Family
+    - name: mobilenet_v2
+      type: mobilenet_v2
+      params:
+        pretrained: true
+        
+    - name: mobilenet_v3_large
+      type: mobilenet_v3_large
+      params:
+        pretrained: true
+        
+    - name: mobilenet_v3_small
+      type: mobilenet_v3_small
+      params:
+        pretrained: true
+        
+    # DenseNet Family
+    - name: densenet121
+      type: densenet121
+      params:
+        pretrained: true
+        
+    - name: densenet161
+      type: densenet161
+      params:
+        pretrained: true
+        
+    - name: densenet169
+      type: densenet169
+      params:
+        pretrained: true
+        
+    - name: densenet201
+      type: densenet201
+      params:
+        pretrained: true
+        
+    # VGG Family
+    - name: vgg11
+      type: vgg11
+      params:
+        pretrained: true
+        
+    - name: vgg13
+      type: vgg13
+      params:
+        pretrained: true
+        
+    - name: vgg16
+      type: vgg16
+      params:
+        pretrained: true
+        
+    - name: vgg19
+      type: vgg19
+      params:
+        pretrained: true
+        
+    # Custom Face Recognition Models
+    # ==============================
+    
+    # GhostFaceNetV2 variants
+    - name: ghostface_112_small
+      type: ghostfacenetv2
+      params:
+        image_size: 112
+        num_features: 256
+        width: 0.5  # Small variant
+        
+    - name: ghostface_112_medium
+      type: ghostfacenetv2
+      params:
+        image_size: 112
+        num_features: 256
+        width: 1.0  # Standard variant
+        
+    - name: ghostface_112_large
+      type: ghostfacenetv2
+      params:
+        image_size: 112
+        num_features: 512
+        width: 1.3  # Large variant
+        
+    # Modified MobileFaceNet
+    - name: mobilefacenet
+      type: modified_mobilefacenet
+      params: {}
+        
+    # DWSeesawFaceV2
+    - name: dwseesawface
+      type: dwseesawfacev2
+      params: {}
+        
+    # Basic Models (for comparison)
+    # ============================
+    
+    # Simple MLP
+    - name: mlp
+      type: mlp
+      params:
+        hidden_size: 512
+        hidden_layers: 3
+        
+    # Simple CNN
+    - name: cnn
+      type: cnn
+      params: {}
 
-# Fixed settings
 fixed:
-  # Use SLDA as the strategy for all backbone comparisons
+  # Fixed strategy - SLDA (excellent for face recognition)
   strategy:
     name: slda
+    type: slda
     params:
-      # SLDA specific parameters
       shrinkage_param: 0.0001
       streaming_update_sigma: true
-      # input_size will be set automatically based on the model
-  
-  model:
-    backbone:
-      pretrained: true    # Use ImageNet pretrained weights
       
+  # Fixed dataset - SmartEye IR faces
   dataset:
-    name: olivetti       # 40 classes, good for testing
-    n_experiences: 8
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    # n_experiences: FIXED AT 17 (1 identity per experience)
+    test_split: 0.2
+    use_cache: true  # Use cached dataset splits for faster loading
+    preload_to_memory: false  # Memory efficient loading
     
+  # Training configuration optimized for SLDA
   training:
     epochs_per_experience: 1  # SLDA typically uses 1 epoch
-    batch_size: 16       # May need adjustment for larger models
+    batch_size: 16  # May need to reduce for larger models if OOM
     lr: 0.001
+    optimizer: adam
     
-    # Multi-seed evaluation
-    debug: false
-    seeds: [42, 123, 456, 789, 1011]  # 5 seeds for robust comparison
-    
-  evaluation:
-    primary_metric: average_accuracy
-    
-    # Track efficiency metrics
-    additional_metrics:
-      - model_params       # Number of parameters
-      - inference_time     # Time per forward pass
-      - memory_usage       # GPU memory usage
-      - training_time      # Time per experience
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed for faster comparison, can add more later
+    device: cuda
+    save_checkpoints: false
 
-# Model specifications for reference
-# Feature dimensions (important for SLDA):
-# - MobileNetV1: 1024
-# - MobileNetV3-Small: 576
-# - MobileNetV3-Large: 960
-# - EfficientNet-B0: 1280
-# - ResNet-18: 512
-# - EfficientNet-B1: 1280
-# - EfficientNet-B2: 1408
-# - ResNet-50: 2048
-# - EfficientNet-B3: 1536
-# - EfficientNet-B4: 1792
-
-# Expected insights:
-# - SLDA is efficient with all models (no backprop on features)
-# - Smaller models (MobileNet) fastest but potentially lower accuracy
-# - EfficientNet models should provide good accuracy/efficiency tradeoff
-# - ResNet50 may have high accuracy but slower feature extraction
-# - Feature dimension affects SLDA's covariance matrix size
+# Expected Results:
+# ================
+# Standard Models (pretrained on ImageNet):
+# - EfficientNet B0-B4: Should achieve ~99% (proven to work)
+# - ResNet variants: Should achieve high accuracy with different efficiency
+# - MobileNet variants: Faster inference, potentially slightly lower accuracy
+# - DenseNet: High accuracy but slower
+# - VGG: Baseline comparison
+#
+# Custom Face Models:
+# - GhostFaceNetV2: Face-optimized, should achieve ~99%
+# - MobileFaceNet: Mobile-optimized for faces, should achieve ~99%  
+# - DWSeesawFaceV2: Efficient face model, should achieve ~99%
+#
+# Basic Models:
+# - MLP: Baseline comparison (likely lower accuracy)
+# - CNN: Simple CNN baseline
+#
+# Model Efficiency Ranking (Expected):
+# 1. MobileNet variants (fastest)
+# 2. EfficientNet B0-B1 (good balance) 
+# 3. Custom face models (face-optimized)
+# 4. ResNet variants (medium speed)
+# 5. DenseNet/VGG (slower)
+#
+# Accuracy Ranking (Expected):
+# 1. Custom face models (~99%)
+# 2. EfficientNet B2-B4 (~99%)
+# 3. ResNet/DenseNet (~95-99%)
+# 4. EfficientNet B0-B1 (~95-99%)
+# 5. MobileNet variants (~90-95%)
+# 6. Basic models (~70-85%)

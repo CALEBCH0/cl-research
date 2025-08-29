@@ -8,6 +8,9 @@ import traceback
 import yaml
 import threading
 import sys
+import signal
+import os
+import time
 from pathlib import Path
 from datetime import datetime
 import numpy as np
@@ -15,21 +18,85 @@ import pandas as pd
 import torch
 from src.training import run_training
 
+# Global flags for shutdown control
+stop_requested = False
+force_quit_count = 0
+shutdown_timeout = 5  # seconds
+
+def signal_handler(sig, frame):
+    """Enhanced signal handler with escalating quit levels."""
+    global stop_requested, force_quit_count
+    
+    force_quit_count += 1
+    
+    if force_quit_count == 1:
+        print(f"\n🛑 INTERRUPT (Ctrl+C) - Graceful shutdown requested...")
+        print("   Press Ctrl+C again within 5 seconds for immediate force quit")
+        stop_requested = True
+        
+        # Start timeout for force quit
+        def reset_counter():
+            time.sleep(shutdown_timeout)
+            global force_quit_count
+            if force_quit_count == 1:
+                force_quit_count = 0
+                
+        threading.Thread(target=reset_counter, daemon=True).start()
+        
+    elif force_quit_count == 2:
+        print(f"\n💥 FORCE QUIT (Ctrl+C x2) - Terminating immediately!")
+        print("   Killing all processes...")
+        
+        # Kill current process and all children
+        try:
+            # Try to kill the process group
+            os.killpg(os.getpgid(0), signal.SIGTERM)
+        except:
+            pass
+        finally:
+            os._exit(1)  # Nuclear option - bypass all cleanup
+    
+    else:  # force_quit_count >= 3
+        print(f"\n☢️  NUCLEAR QUIT (Ctrl+C x3) - Emergency exit!")
+        os._exit(2)  # Immediate exit, no cleanup whatsoever
+
+# Register the enhanced signal handler
+signal.signal(signal.SIGINT, signal_handler)
+
 # Global flag for graceful shutdown
 stop_requested = False
 
 def check_for_quit():
-    """Check for 'q' input in a separate thread."""
+    """Check for 'q' or 'quit' input in a separate thread."""
     global stop_requested
-    while not stop_requested:
-        try:
-            user_input = input()
-            if user_input.lower() == 'q':
-                print("\nStop requested! Finishing current run and saving results...")
-                stop_requested = True
+    
+    try:
+        while not stop_requested:
+            try:
+                user_input = input().strip().lower()
+                if user_input in ['q', 'quit', 'exit', 'stop']:
+                    print(f"\n🛑 QUIT command received - Stopping after current run...")
+                    stop_requested = True
+                    break
+                elif user_input in ['force', 'kill', 'abort']:
+                    print(f"\n💥 FORCE QUIT command received - Terminating immediately!")
+                    os._exit(1)
+                elif user_input == 'help':
+                    print("\n📖 Available commands:")
+                    print("   q, quit, exit, stop  - Graceful shutdown after current run")
+                    print("   force, kill, abort   - Immediate termination")
+                    print("   Ctrl+C (1x)         - Graceful shutdown")  
+                    print("   Ctrl+C (2x)         - Force quit")
+                    print("   Ctrl+C (3x)         - Nuclear quit")
+                    print("   help                 - Show this help")
+            except EOFError:
+                # Handle Ctrl+D or closed stdin
                 break
-        except:
-            pass
+            except Exception as e:
+                # Ignore input errors and continue
+                pass
+    except:
+        pass  # Thread cleanup
 
 
 def parse_config(config_path):
@@ -227,7 +294,13 @@ def main():
     
     # Start input monitoring thread
     if not args.dry_run:
-        print("\nPress 'q' + Enter at any time to stop after current run completes.")
+        print("\n🔧 QUIT OPTIONS:")
+        print("   Type: 'q', 'quit', 'exit' + Enter  - Graceful stop after current run")
+        print("   Type: 'force', 'kill' + Enter      - Immediate termination")
+        print("   Type: 'help' + Enter               - Show all quit options")
+        print("   Press: Ctrl+C (1x)                - Graceful shutdown")
+        print("   Press: Ctrl+C (2x within 5s)      - Force quit")  
+        print("   Press: Ctrl+C (3x)                - Nuclear quit")
         input_thread = threading.Thread(target=check_for_quit, daemon=True)
         input_thread.start()
     
@@ -472,6 +545,11 @@ def main():
                     if key not in training_kwargs:
                         training_kwargs[key] = value
                 
+                # Final quit check before training
+                if stop_requested:
+                    print("\n🛑 Quit requested before training - Stopping...")
+                    break
+                    
                 result = run_training(**training_kwargs)
                 
                 # Add run info to result

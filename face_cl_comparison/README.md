@@ -64,7 +64,37 @@ python runner.py --exp large_scale_faces
 python runner.py --exp NCM_SLDA_iCaRL
 ```
 
-**To stop experiments gracefully**: Type 'q' then press Enter. The current run will complete and results will be saved.
+## 🛑 Stopping Experiments
+
+The framework provides **multiple interrupt methods** for different situations:
+
+### 📝 **Keyboard Commands** (Type + Enter)
+- **`q`, `quit`, `exit`, `stop`** → Graceful stop after current run completes
+- **`force`, `kill`, `abort`** → Immediate termination (bypasses cleanup)
+- **`help`** → Show all available quit options
+
+### ⌨️ **Ctrl+C (Escalating Levels)**
+- **1st Ctrl+C** → Graceful shutdown (5-second window to escalate)
+- **2nd Ctrl+C** (within 5 seconds) → Force quit (kills process group)
+- **3rd Ctrl+C** → Nuclear quit (emergency `os._exit()`)
+
+### 🎯 **When to Use Each Method:**
+
+| Situation | Recommended Method | Description |
+|-----------|-------------------|-------------|
+| **Normal stop** | `q` + Enter | Clean shutdown, saves results |
+| **Training frozen** | `force` + Enter or Ctrl+C ×2 | Immediate termination |
+| **Complete freeze** | Ctrl+C ×3 | Emergency exit (last resort) |
+| **Need to see options** | `help` + Enter | Display all quit methods |
+
+### ✅ **Features:**
+- **Works when frozen** - Text commands work even if training/GUI freezes
+- **Graceful by default** - Always tries clean shutdown first
+- **Process group termination** - Kills child processes too
+- **Clear feedback** - Shows exactly what each method does
+- **5-second escalation window** - Time to double-tap Ctrl+C for force quit
+
+**💡 Pro tip**: Start with `q` + Enter, escalate to force methods only if needed.
 
 ## Available Datasets
 
@@ -496,11 +526,36 @@ face_cl_comparison/
 
 ## Common Issues
 
-1. **iCaRL Poor Performance**: Fixed by ensuring correct class ID handling (`class_ids_from_zero_in_each_exp=False`)
-2. **Plugin Compatibility**: Some strategies (like SLDA) may warn about incompatible callbacks but still function
-3. **Memory Requirements**: EfficientNet models require significant GPU memory
-4. **LFW Resize Error**: Fixed - sklearn's `fetch_lfw_people` expects resize as a float ratio (e.g., 0.256 for 64x64 from 250x250)
-5. **Dataset Download**: LFW will automatically download (~200MB) on first use
+### 🚫 **Training Issues**
+
+1. **Training Frozen/Stuck**:
+   - **Cause**: Large models, complex feature extraction, or CUDA issues
+   - **Solution**: Use enhanced quit methods (see [Stopping Experiments](#-stopping-experiments))
+   - **Quick fix**: Type `force` + Enter or press Ctrl+C twice
+
+2. **Memory Issues**: 
+   - **CUDA OOM**: Reduce batch size in config (`batch_size: 8` or lower)
+   - **Large models**: Use lighter models or enable `preload_to_memory: false`
+   - **Feature extraction**: Some models produce very large feature vectors
+
+3. **Slow Performance**:
+   - **Feature extraction overhead**: Custom face models extract features layer-by-layer
+   - **Large feature dimensions**: Models like MobileFaceNet produce 100k+ features for SLDA
+   - **Solution**: Use `*_light.yaml` configs for reduced memory/speed requirements
+
+### 🐛 **General Issues**
+
+4. **iCaRL Poor Performance**: Fixed by ensuring correct class ID handling (`class_ids_from_zero_in_each_exp=False`)
+5. **Plugin Compatibility**: Some strategies (like SLDA) may warn about incompatible callbacks but still function  
+6. **LFW Resize Error**: Fixed - sklearn's `fetch_lfw_people` expects resize as a float ratio (e.g., 0.256 for 64x64 from 250x250)
+7. **Dataset Download**: LFW will automatically download (~200MB) on first use
+
+### 💡 **Performance Tips**
+
+- **Use light configs**: `smarteye_models_light.yaml`, `smarteye_strats_light.yaml` for faster experiments
+- **Single seed testing**: Set `seeds: [42]` for initial testing, expand to `[42, 123, 456]` for final results  
+- **Batch size tuning**: Start with `batch_size: 16`, reduce to 8 or 4 if OOM errors occur
+- **Monitor GPU memory**: Use `nvidia-smi` to monitor memory usage during training
 
 ## Contributing
 
