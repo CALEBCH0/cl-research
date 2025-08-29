@@ -54,11 +54,8 @@ vary:
       type: modified_mobilefacenet
       params: {}
         
-    # DWSeesawFaceV2
-    - name: dwseesawface
-      type: dwseesawfacev2
-      params: {}
-        
+    # Note: DWSeesawFaceV2 removed due to persistent OOM errors
+    
     # Basic Models (for comparison)
     # ============================
     
@@ -106,18 +103,19 @@ fixed:
     device: cuda
     save_checkpoints: false
 
-# Model Summary (11 models total):
+# Model Summary (10 models total):
 # ================================
-# Standard Models (5):
+# Standard Models (6):
 # - EfficientNet: B0, B1 (smallest variants)
-# - ResNet: 18 (smallest)
+# - ResNet: 18 (smallest)  
 # - MobileNet: V2, V3-Small (both lightweight)
-# Note: DenseNet121 and VGG11 removed due to OOM errors
+# - DenseNet: 121 (smallest)
+# - VGG: 11 (smallest)
 #
-# Custom Face Models (3):
+# Custom Face Models (2):
 # - GhostFaceNetV2: Small variant only
 # - MobileFaceNet: Mobile-optimized
-# - DWSeesawFaceV2: Efficient face model
+# Note: DWSeesawFaceV2 removed due to OOM errors
 #
 # Basic Models (2):
 # - MLP: Simple baseline

@@ -184,6 +184,14 @@ def _create_feature_extractor(model: nn.Module, model_type: str, benchmark_info)
             if hasattr(model, 'get_features'):
                 # This is SimpleMLP - use built-in get_features method
                 return model.get_features(x)
+            
+            # Check if this is SimpleCNN (has features attribute and classifier)
+            elif hasattr(model, 'features') and hasattr(model, 'classifier') and not hasattr(model, 'avgpool'):
+                # This is likely SimpleCNN - extract features before classifier
+                features = model.features(x)
+                if features.dim() > 2:
+                    features = features.view(features.size(0), -1)
+                return features
                 
             elif hasattr(model, 'classifier'):
                 # Models with classifier (EfficientNet, VGG, etc)  
@@ -322,7 +330,7 @@ MODEL_FEATURE_SIZES = {
     'vgg16': 512,  # 512 features after global avg pooling from final conv layer
     'vgg19': 512,  # 512 features after global avg pooling from final conv layer
     'mlp': 512,    # 512 features from last hidden layer (hidden_size in config)
-    'cnn': 256,    # SimpleCNN default feature size (needs verification)
+    'cnn': 64,     # SimpleCNN actual feature size (from error: 16x64)
 }
 
 # Strategy mappings
