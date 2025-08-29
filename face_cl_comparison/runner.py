@@ -559,6 +559,11 @@ def main():
                 result['seed'] = seed
                 run_results_by_seed.append(result)
                 
+                # Cleanup GPU memory after each run to prevent OOM
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                
             except Exception as e:
                 error_info = {
                     'run_name': run_config['name'],
@@ -602,6 +607,11 @@ def main():
                 all_results.append(agg_result)
                 
                 print(f"  → {run_config['name']}: {mean_acc:.3f} ± {std_acc:.3f}")
+        
+        # Additional memory cleanup after each configuration
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
     
     # Save results and show completion summary
     total_runs = len(runs)

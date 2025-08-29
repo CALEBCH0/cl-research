@@ -185,15 +185,29 @@ def _create_feature_extractor(model: nn.Module, model_type: str, benchmark_info)
         def _extract_features(self, model, x):
             """Extract features from penultimate layer."""
             if hasattr(model, 'classifier'):
-                # Models with classifier (EfficientNet, etc)
-                modules = list(model.children())[:-1]
-                feature_extractor = nn.Sequential(*modules)
-                features = feature_extractor(x)
+                # Models with classifier (EfficientNet, VGG, etc)
+                # Extract features before the classifier but after global pooling
+                features = model.features(x)
+                if hasattr(model, 'avgpool'):
+                    features = model.avgpool(features)
+                elif features.dim() > 2:
+                    # Apply global average pooling if no explicit avgpool
+                    features = nn.functional.adaptive_avg_pool2d(features, (1, 1))
+                    
             elif hasattr(model, 'fc'):
-                # ResNet-style models
-                modules = list(model.children())[:-1]
-                feature_extractor = nn.Sequential(*modules)
-                features = feature_extractor(x)
+                # ResNet-style models - extract features before fc layer
+                x = model.conv1(x)
+                x = model.bn1(x)
+                x = model.relu(x)
+                x = model.maxpool(x)
+                
+                x = model.layer1(x)
+                x = model.layer2(x)
+                x = model.layer3(x)
+                x = model.layer4(x)
+                
+                features = model.avgpool(x)
+                
             else:
                 # For face recognition models, use final embeddings (fast & effective)
                 # These models are designed to output meaningful feature embeddings
