@@ -145,6 +145,9 @@ def create_facelandmark_benchmark(
     # Cache file names
     cache_file = cache_path / f'facelandmark_split_n{n_experiences}_test{test_split}_seed{seed}.pt'
     
+    # Create full dataset to get structure (needed for class names regardless of cache)
+    full_dataset = FaceLandmarkDataset(root_dir)
+    
     if use_cache and cache_file.exists():
         print(f"Loading cached dataset splits from {cache_file}")
         cache_data = torch.load(cache_file)
@@ -153,8 +156,6 @@ def create_facelandmark_benchmark(
         n_classes = cache_data['n_classes']
         actual_n_experiences = cache_data['n_experiences']
     else:
-        # Create full dataset to get structure
-        full_dataset = FaceLandmarkDataset(root_dir)
         n_classes = len(full_dataset.class_to_idx)
         
         # Determine number of experiences

@@ -1,0 +1,69 @@
+# Lightweight FaceLandmark test - Quick strategy comparison
+# Minimal config for fast testing and debugging
+name: flmk_light
+description: Quick test of SLDA vs Naive on FaceLandmark IR faces
+
+vary:
+  strategy:
+    # Just two strategies for quick comparison
+    - name: naive
+      type: naive
+      params: {}
+      
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+
+fixed:
+  # Fixed model - EfficientNet B0 (smaller and faster than B1)
+  model:
+    name: efficientnet_b1
+    type: efficientnet_b1
+    params:
+      pretrained: true
+      
+  # Fixed dataset - FaceLandmark with fewer experiences for speed
+  dataset:
+    name: facelandmark_crop
+    is_predefined: false
+    path: /home/dylee/data/data_fid/FaceID/FaceLandmark/data/IR/cropdata
+    test_split: 0.2
+    n_experiences: 2  # Only 2 experiences (47 classes each) for quick test
+    use_cache: true
+    preload_to_memory: false
+    seed: 42
+    
+  # Minimal training configuration for speed
+  training:
+    epochs_per_experience: 1  # Just 1 epoch for quick test
+    batch_size: 32  # Larger batch for faster processing
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed
+    device: cuda
+    save_checkpoints: false
+
+# Quick Test Summary:
+# ==================
+# - 2 strategies: Naive vs SLDA
+# - 2 experiences: 47 classes each
+# - 1 epoch per experience
+# - EfficientNet B0 (faster than B1)
+# - Batch size 32 (2x normal)
+#
+# Expected Runtime: ~2-5 minutes total
+#
+# Expected Results:
+# - SLDA: ~95-100% accuracy
+# - Naive: ~50-70% accuracy (forgetting on first half)
+#
+# This config is perfect for:
+# - Testing if the dataset loads correctly
+# - Verifying the pipeline works
+# - Quick strategy comparison
+# - Debugging issues
