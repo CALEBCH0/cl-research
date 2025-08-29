@@ -19,7 +19,7 @@ import numpy as np
 from collections import defaultdict
 
 from avalanche.benchmarks import nc_benchmark
-from avalanche.benchmarks.utils import make_classification_dataset
+from avalanche.benchmarks.utils import as_classification_dataset
 from src.utils.benchmark_info import BenchmarkInfo
 
 
@@ -208,15 +208,8 @@ def create_facelandmark_benchmark(
     )
     
     # Convert to Avalanche datasets
-    train_dataset = make_classification_dataset(
-        train_dataset,
-        targets=train_dataset.targets
-    )
-    
-    test_dataset = make_classification_dataset(
-        test_dataset,
-        targets=test_dataset.targets
-    )
+    train_dataset = as_classification_dataset(train_dataset)
+    test_dataset = as_classification_dataset(test_dataset)
     
     # Create class order for experiences
     if actual_n_experiences == n_classes:
