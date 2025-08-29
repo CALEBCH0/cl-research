@@ -450,6 +450,31 @@ def create_benchmark_from_config(dataset_config: Dict[str, Any]):
         # LFW also returns (benchmark, BenchmarkInfo)
         return create_lfw_benchmark(**params)
         
+    elif dataset_type == 'facelandmark_crop':
+        from src.datasets.facelandmark import create_facelandmark_benchmark
+        params = dataset_config.get('params', {})
+        
+        # Extract path from dataset config if provided
+        if 'path' in dataset_config:
+            params['root_dir'] = dataset_config['path']
+        
+        # Extract other common dataset parameters
+        if 'test_split' in dataset_config:
+            params['test_split'] = dataset_config['test_split']
+        if 'n_experiences' in dataset_config:
+            params['n_experiences'] = dataset_config['n_experiences']
+        if 'seed' in dataset_config:
+            params['seed'] = dataset_config['seed']
+        if 'image_size' in dataset_config:
+            params['image_size'] = tuple(dataset_config['image_size'])
+        if 'use_cache' in dataset_config:
+            params['use_cache'] = dataset_config['use_cache']
+        if 'preload_to_memory' in dataset_config:
+            params['preload_to_memory'] = dataset_config['preload_to_memory']
+            
+        # FaceLandmark also returns (benchmark, BenchmarkInfo)
+        return create_facelandmark_benchmark(**params)
+        
     else:
         raise ValueError(f"Unknown dataset type: {dataset_type}")
 

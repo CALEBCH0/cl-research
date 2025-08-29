@@ -1,0 +1,109 @@
+# Strategy comparison on FaceLandmark IR dataset with EfficientNet B1
+# Test key strategies (Naive, EWC, SLDA) on a different face dataset
+name: flmk_strats
+description: Compare Naive, EWC, and SLDA strategies using EfficientNet B1 on FaceLandmark IR faces
+
+vary:
+  strategy:
+    # Baseline Strategy
+    # ================
+    - name: naive
+      type: naive
+      params: {}
+      
+    # Regularization Strategy
+    # =======================
+    - name: ewc
+      type: ewc
+      params:
+        ewc_lambda: 0.4
+        mode: separate
+        decay_factor: None
+        keep_importance_data: False
+        
+    # Discriminative Strategy
+    # =======================
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+
+fixed:
+  # Fixed model - EfficientNet B1 (proven to work well)
+  model:
+    name: efficientnet_b1
+    type: efficientnet_b1
+    params:
+      pretrained: true
+      
+  # Fixed dataset - FaceLandmark IR faces
+  dataset:
+    name: facelandmark_crop
+    is_predefined: false  # Custom dataset, needs creation
+    path: /home/dylee/data/data_fid/FaceID/FaceLandmark/data/IR/cropdata
+    # Dataset parameters - adjust based on actual structure
+    test_split: 0.2
+    n_experiences: 10  # Adjust based on number of identities
+    use_cache: true  # Use cached dataset splits for faster loading
+    preload_to_memory: false  # Memory efficient loading
+    seed: 42
+    
+  # Training configuration
+  training:
+    epochs_per_experience: 10  # Standard for comparison
+    batch_size: 16  # Conservative batch size for memory
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed for faster comparison
+    device: cuda
+    save_checkpoints: false
+
+# Strategy Comparison Summary:
+# ============================
+# 
+# Strategies (3):
+# --------------
+# 1. **Naive**: 
+#    - Baseline without continual learning protection
+#    - Expected: Catastrophic forgetting on earlier identities
+#    - Performance: ~40-60% average accuracy
+#
+# 2. **EWC (Elastic Weight Consolidation)**:
+#    - Regularization-based approach
+#    - Protects important weights from previous tasks
+#    - Performance: ~70-85% average accuracy
+#
+# 3. **SLDA (Streaming Linear Discriminant Analysis)**:
+#    - Discriminative approach optimized for classification
+#    - Excellent for face recognition tasks
+#    - Performance: ~95-100% average accuracy
+#
+# Dataset Notes:
+# -------------
+# - FaceLandmark IR dataset: Different face dataset for validation
+# - Path: /home/dylee/data/data_fid/FaceID/FaceLandmark/data/IR/cropdata
+# - IR images: Infrared face images (similar to SmartEye)
+# - May need dataset loader implementation if not predefined
+#
+# Expected Results:
+# ----------------
+# 1. SLDA > EWC > Naive (accuracy ranking)
+# 2. SLDA should achieve ~95%+ accuracy
+# 3. EWC should reduce forgetting compared to Naive
+# 4. Naive will show clear catastrophic forgetting pattern
+#
+# Memory Requirements:
+# -------------------
+# - Naive: Minimal (no memory buffer)
+# - EWC: Low (stores Fisher information matrix)
+# - SLDA: Low (stores class statistics)
+#
+# Training Speed:
+# --------------
+# - Fastest: Naive (no overhead)
+# - Fast: SLDA (simple statistics update)
+# - Medium: EWC (Fisher matrix computation)
