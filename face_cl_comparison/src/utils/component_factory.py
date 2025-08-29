@@ -185,9 +185,10 @@ def _create_feature_extractor(model: nn.Module, model_type: str, benchmark_info)
                 # This is SimpleMLP - use built-in get_features method
                 return model.get_features(x)
             
-            # Check if this is SimpleCNN (has features attribute and classifier)
-            elif hasattr(model, 'features') and hasattr(model, 'classifier') and not hasattr(model, 'avgpool'):
-                # This is likely SimpleCNN - extract features before classifier
+            # Check if this is SimpleCNN (has features attribute and classifier, but is Avalanche model)
+            elif (hasattr(model, 'features') and hasattr(model, 'classifier') and 
+                  not hasattr(model, 'avgpool') and 'SimpleCNN' in str(type(model))):
+                # This is SimpleCNN - extract features before classifier
                 features = model.features(x)
                 if features.dim() > 2:
                     features = features.view(features.size(0), -1)
@@ -201,7 +202,7 @@ def _create_feature_extractor(model: nn.Module, model_type: str, benchmark_info)
                 if hasattr(model, 'avgpool'):
                     features = model.avgpool(features)
                 elif features.dim() > 2:
-                    # Apply global average pooling if no explicit avgpool (VGG case)
+                    # Apply global average pooling if no explicit avgpool
                     features = nn.functional.adaptive_avg_pool2d(features, (1, 1))
                     
             elif hasattr(model, 'fc'):

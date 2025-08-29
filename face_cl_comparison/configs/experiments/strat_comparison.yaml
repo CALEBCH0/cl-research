@@ -1,0 +1,202 @@
+# Strategy comparison on SmartEye IR face dataset with EfficientNet B1
+# Compare all available continual learning strategies using fixed model
+name: strat_comparison
+description: Compare all available continual learning strategies using EfficientNet B1 on SmartEye faces
+
+vary:
+  strategy:
+    # Memory-based Strategies
+    # ======================
+    
+    # Experience Replay
+    - name: naive
+      type: naive
+      params: {}
+      
+    # Gradient Episodic Memory
+    - name: gem
+      type: gem
+      params:
+        memory_strength: 0.5
+        patterns_per_exp: 256
+        
+    # Averaged Gradient Episodic Memory  
+    - name: agem
+      type: agem
+      params:
+        patterns_per_exp: 256
+        sample_size: 64
+        
+    # Experience Replay with Reservoir Sampling
+    - name: er
+      type: experience_replay
+      params:
+        mem_size: 1000
+        
+    # Dark Experience Replay
+    - name: der
+      type: der
+      params:
+        mem_size: 1000
+        alpha: 0.1
+        beta: 1.0
+        
+    # Regularization-based Strategies
+    # ===============================
+    
+    # Elastic Weight Consolidation
+    - name: ewc
+      type: ewc
+      params:
+        ewc_lambda: 0.4
+        mode: separate
+        decay_factor: None
+        keep_importance_data: False
+        
+    # Synaptic Intelligence
+    - name: si
+      type: synaptic_intelligence
+      params:
+        si_lambda: 0.1
+        eps: 0.0001
+        
+    # Learning without Forgetting
+    - name: lwf
+      type: lwf
+      params:
+        alpha: 1.0
+        temperature: 2.0
+        
+    # Less-Forgetting Learning
+    - name: lfl
+      type: lfl  
+      params:
+        lambda_e: 1.0
+        
+    # Architecture-based Strategies
+    # =============================
+    
+    # Progressive Neural Networks (if available)
+    # - name: pnn
+    #   type: pnn
+    #   params: {}
+    
+    # Streaming Linear Discriminant Analysis
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+        
+    # Meta-Learning Strategies  
+    # ========================
+    
+    # Model-Agnostic Meta-Learning (if available)
+    # - name: maml
+    #   type: maml
+    #   params:
+    #     lr_inner: 0.01
+    #     first_order: true
+    #     learn_lr: false
+        
+    # iCaRL (Incremental Classifier and Representation Learning)
+    - name: icarl
+      type: icarl
+      params:
+        memory_size: 2000
+        buffer_transform: null
+        fixed_memory: true
+        
+    # BiC (Bias Correction)
+    - name: bic
+      type: bic
+      params:
+        mem_size: 1000
+        
+    # GDUMB (Greedy Sampler and Dumb Learner)
+    - name: gdumb
+      type: gdumb
+      params:
+        mem_size: 1000
+
+fixed:
+  # Fixed model - EfficientNet B1 (proven to work well)
+  model:
+    name: efficientnet_b1
+    type: efficientnet_b1
+    params:
+      pretrained: true
+      
+  # Fixed dataset - SmartEye IR faces
+  dataset:
+    name: smarteye_crop
+    is_predefined: true
+    path: /home/dylee/data/data_fid/FaceID/ARM
+    # n_experiences: FIXED AT 17 (1 identity per experience)
+    test_split: 0.2
+    use_cache: true  # Use cached dataset splits for faster loading
+    preload_to_memory: false  # Memory efficient loading
+    
+  # Training configuration optimized for strategy comparison
+  training:
+    epochs_per_experience: 10  # More epochs for better strategy comparison
+    batch_size: 16  # Conservative batch size for memory
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]  # Single seed for faster comparison
+    device: cuda
+    save_checkpoints: false
+
+# Strategy Summary (15+ strategies total):
+# =======================================
+# Memory-based (5):
+# - Naive: Baseline (no continual learning)
+# - GEM: Gradient Episodic Memory
+# - A-GEM: Averaged GEM (more efficient)  
+# - ER: Experience Replay
+# - DER: Dark Experience Replay
+#
+# Regularization-based (4):
+# - EWC: Elastic Weight Consolidation
+# - SI: Synaptic Intelligence
+# - LwF: Learning without Forgetting
+# - LFL: Less-Forgetting Learning
+#
+# Discriminative (1):
+# - SLDA: Streaming Linear Discriminant Analysis
+#
+# Meta-Learning (3):
+# - iCaRL: Incremental learning with exemplars
+# - BiC: Bias Correction for class imbalance
+# - GDUMB: Simple rehearsal baseline
+#
+# Expected Performance Ranking:
+# ============================
+# High Performance (85-100%):
+# - SLDA: Excellent for face recognition (discriminative approach)
+# - iCaRL: Good for class-incremental scenarios
+# - DER/ER: Strong memory-based approaches
+#
+# Medium Performance (70-85%):
+# - GEM/A-GEM: Gradient-based memory protection
+# - EWC: Weight regularization
+# - BiC: Bias correction helps with imbalanced data
+#
+# Lower Performance (50-70%):
+# - Naive: No continual learning (catastrophic forgetting)
+# - LwF: Knowledge distillation without exemplars
+# - SI: Synaptic importance weighting
+#
+# Memory Usage (Expected):
+# - Low memory: Naive, EWC, SI, LwF, LFL, SLDA
+# - Medium memory: GEM, A-GEM, BiC  
+# - High memory: ER, DER, iCaRL, GDUMB (store exemplars)
+#
+# Speed Ranking (Expected):
+# - Fastest: Naive, SLDA
+# - Fast: EWC, SI, LwF, LFL
+# - Medium: A-GEM, ER, BiC
+# - Slower: GEM, DER, iCaRL, GDUMB (exemplar management)
