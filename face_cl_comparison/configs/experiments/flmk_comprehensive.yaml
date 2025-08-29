@@ -1,0 +1,132 @@
+# Comprehensive strategy comparison on FaceLandmark IR dataset
+# Test multiple CL strategies with different experience granularities
+name: flmk_comprehensive
+description: Comprehensive continual learning comparison on FaceLandmark IR faces (94 identities)
+
+vary:
+  # Test with different experience splits
+  dataset:
+    # Fine-grained: 94 experiences (1 identity per experience)
+    - name: flmk_fine
+      type: facelandmark_crop
+      path: /home/dylee/data/data_fid/FaceID/FaceLandmark/data/IR/cropdata
+      n_experiences: 94  # Most challenging - one new person at a time
+      test_split: 0.2
+      seed: 42
+      
+    # Balanced: 47 experiences (2 identities per experience)  
+    - name: flmk_balanced
+      type: facelandmark_crop
+      path: /home/dylee/data/data_fid/FaceID/FaceLandmark/data/IR/cropdata
+      n_experiences: 47  # Balanced - two people per experience
+      test_split: 0.2
+      seed: 42
+      
+    # Coarse: 2 experiences (47 identities per experience)
+    - name: flmk_coarse
+      type: facelandmark_crop
+      path: /home/dylee/data/data_fid/FaceID/FaceLandmark/data/IR/cropdata
+      n_experiences: 2  # Easiest - large batches of people
+      test_split: 0.2
+      seed: 42
+      
+  strategy:
+    # Baseline
+    - name: naive
+      type: naive
+      params: {}
+      
+    # Regularization-based
+    - name: ewc
+      type: ewc
+      params:
+        ewc_lambda: 0.4
+        mode: separate
+        
+    - name: si
+      type: synaptic_intelligence
+      params:
+        si_lambda: 0.1
+        
+    - name: lwf
+      type: lwf
+      params:
+        alpha: 1.0
+        temperature: 2.0
+        
+    # Memory-based
+    - name: er
+      type: experience_replay
+      params:
+        mem_size: 2000
+        
+    - name: der
+      type: der
+      params:
+        mem_size: 2000
+        alpha: 0.1
+        beta: 1.0
+        
+    - name: gem
+      type: gem
+      params:
+        memory_strength: 0.5
+        patterns_per_exp: 256
+        
+    # Discriminative
+    - name: slda
+      type: slda
+      params:
+        shrinkage_param: 0.0001
+        streaming_update_sigma: true
+        
+    # Meta-learning
+    - name: icarl
+      type: icarl
+      params:
+        memory_size: 2000
+        fixed_memory: true
+
+fixed:
+  # Fixed model - EfficientNet B1
+  model:
+    name: efficientnet_b1
+    type: efficientnet_b1
+    params:
+      pretrained: true
+      
+  # Training configuration
+  training:
+    epochs_per_experience: 5  # Reduced for faster experimentation
+    batch_size: 16
+    lr: 0.001
+    optimizer: adam
+    
+  # Experiment configuration
+  experiment:
+    seeds: [42]
+    device: cuda
+    save_checkpoints: false
+
+# Expected Results Matrix:
+# ========================
+# 
+# Performance by Strategy (expected ranking):
+# 1. SLDA: 95-100% (discriminative, optimal for faces)
+# 2. iCaRL: 85-95% (strong with exemplars)
+# 3. DER/ER: 80-90% (memory-based)
+# 4. GEM: 75-85% (gradient protection)
+# 5. EWC/SI: 70-80% (regularization)
+# 6. LwF: 65-75% (distillation without memory)
+# 7. Naive: 40-60% (catastrophic forgetting)
+#
+# Performance by Experience Granularity:
+# - 94 experiences: Hardest (most forgetting potential)
+# - 47 experiences: Balanced difficulty
+# - 2 experiences: Easiest (least forgetting)
+#
+# Interesting Comparisons:
+# - Fine-grained (94 exp) will show maximum forgetting in Naive
+# - SLDA should maintain high accuracy regardless of granularity
+# - Memory-based methods will perform better with fewer experiences
+# - Regularization methods will struggle more with fine-grained splits

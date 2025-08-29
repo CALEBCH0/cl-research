@@ -42,9 +42,13 @@ fixed:
     name: facelandmark_crop
     is_predefined: false  # Custom dataset, needs creation
     path: /home/dylee/data/data_fid/FaceID/FaceLandmark/data/IR/cropdata
-    # Dataset parameters - adjust based on actual structure
+    # Dataset parameters - 94 identities total
     test_split: 0.2
-    n_experiences: 10  # Adjust based on number of identities
+    n_experiences: 47  # 94 classes / 47 = 2 classes per experience (good for CL)
+    # Other valid options for 94 classes:
+    # n_experiences: 94  # 1 class per experience (fine-grained)
+    # n_experiences: 47  # 2 classes per experience (balanced)
+    # n_experiences: 2   # 47 classes per experience (coarse-grained)
     use_cache: true  # Use cached dataset splits for faster loading
     preload_to_memory: false  # Memory efficient loading
     seed: 42
