@@ -1,5 +1,6 @@
 # Lightweight backbone comparison on SmartEye IR face dataset with SLDA
-name: backbone_comparison
+# Focus on small/efficient models that fit in memory
+name: backbone_comparison_light
 description: Compare lightweight backbone architectures using SLDA on SmartEye faces
 
 vary:
@@ -105,13 +106,13 @@ fixed:
   # Training configuration optimized for SLDA
   training:
     epochs_per_experience: 1  # SLDA typically uses 1 epoch
-    batch_size: 16  # May need to reduce for larger models if OOM
+    batch_size: 16  # Conservative batch size for memory
     lr: 0.001
     optimizer: adam
     
   # Experiment configuration
   experiment:
-    seeds: [42]  # Single seed for faster comparison, can add more later
+    seeds: [42]  # Single seed for faster comparison
     device: cuda
     save_checkpoints: false
 

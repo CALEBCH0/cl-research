@@ -265,8 +265,21 @@ MODEL_INPUT_SIZES = {
     'efficientnet_b3': (300, 300, 3),
     'efficientnet_b4': (380, 380, 3),
     'resnet18': (224, 224, 3),
+    'resnet34': (224, 224, 3),
     'resnet50': (224, 224, 3),
     'mobilenet_v2': (224, 224, 3),
+    'mobilenet_v3_large': (224, 224, 3),
+    'mobilenet_v3_small': (224, 224, 3),
+    'densenet121': (224, 224, 3),
+    'densenet161': (224, 224, 3),
+    'densenet169': (224, 224, 3),
+    'densenet201': (224, 224, 3),
+    'vgg11': (224, 224, 3),
+    'vgg13': (224, 224, 3),
+    'vgg16': (224, 224, 3),
+    'vgg19': (224, 224, 3),
+    'mlp': (112, 112, 3),  # MLP can handle any input, but use default
+    'cnn': (112, 112, 3),  # SimpleCNN expects 3 channels
 }
 
 MODEL_FEATURE_SIZES = {
@@ -326,7 +339,7 @@ TORCHVISION_MODELS = [
 CUSTOM_MODELS = {
     'ghostfacenetv2': ('ghostfacenetV2', 'GhostFaceNetV2'),  # (module_file, class_name)
     'modified_mobilefacenet': ('modified_mobilefacenet', 'Modified_MobileFaceNet'),
-    'dwseesawfacev2': ('DWseesawfaceV2', 'DWSeesawFaceV2'),
+    'dwseesawfacev2': ('DWseesawfaceV2', 'DW_seesawFaceNetv2'),
 }
 
 
@@ -418,6 +431,9 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
             model = SimpleMLP(input_size=input_size, num_classes=benchmark_info.num_classes)
         elif avalanche_class == 'SimpleCNN':
             model = SimpleCNN(num_classes=benchmark_info.num_classes)
+        
+        # Add preprocessing wrapper to handle channel/size conversions
+        model = _add_model_preprocessing(model, model_type, benchmark_info)
         
         # Store model type for later use 
         model._model_type = model_type
