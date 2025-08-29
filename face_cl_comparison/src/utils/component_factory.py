@@ -295,6 +295,16 @@ MODEL_FEATURE_SIZES = {
     'resnet18': 512,
     'resnet50': 2048,
     'mobilenet_v2': 1280,
+    'mobilenet_v3_small': 576,
+    'mobilenet_v3_large': 960,
+    'densenet121': 1024,
+    'densenet161': 2208,
+    'densenet169': 1664,
+    'densenet201': 1920,
+    'vgg11': 4096,
+    'vgg13': 4096,
+    'vgg16': 4096,
+    'vgg19': 4096,
 }
 
 # Strategy mappings
@@ -427,7 +437,11 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
         avalanche_class = AVALANCHE_MODELS[model_type]
         
         if avalanche_class == 'SimpleMLP':
-            input_size = benchmark_info.channels * benchmark_info.image_size[0] * benchmark_info.image_size[1]
+            # Calculate input size based on model's expected input after preprocessing
+            model_input_spec = MODEL_INPUT_SIZES.get(model_type, (*benchmark_info.image_size, benchmark_info.channels))
+            target_channels = model_input_spec[2] if len(model_input_spec) > 2 else benchmark_info.channels
+            target_size = (model_input_spec[0], model_input_spec[1])
+            input_size = target_channels * target_size[0] * target_size[1]
             model = SimpleMLP(input_size=input_size, num_classes=benchmark_info.num_classes)
         elif avalanche_class == 'SimpleCNN':
             model = SimpleCNN(num_classes=benchmark_info.num_classes)
@@ -509,8 +523,8 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
                     num_features=512  # Standard face embedding dimension
                 )
             elif model_type == 'dwseesawfacev2':
-                # Need to check DWSeesawFaceV2 constructor
-                model = model_class(num_classes=benchmark_info.num_classes)
+                # DWSeesawFaceV2 only accepts embedding_size, not num_classes
+                model = model_class(embedding_size=512)
             else:
                 # Default case
                 model = model_class(num_classes=benchmark_info.num_classes)

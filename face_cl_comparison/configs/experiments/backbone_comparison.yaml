@@ -35,17 +35,8 @@ vary:
       params:
         pretrained: true
         
-    # DenseNet (Smallest only)
-    - name: densenet121
-      type: densenet121
-      params:
-        pretrained: true
-        
-    # VGG (Smallest only)
-    - name: vgg11
-      type: vgg11
-      params:
-        pretrained: true
+    # Note: DenseNet121 and VGG11 removed due to OOM errors with SLDA
+    # Their feature dimensions (1024 and 4096) require too much GPU memory for covariance matrices
         
     # Custom Face Recognition Models
     # ==============================
@@ -115,14 +106,13 @@ fixed:
     device: cuda
     save_checkpoints: false
 
-# Model Summary (13 models total):
+# Model Summary (11 models total):
 # ================================
-# Standard Models (7):
+# Standard Models (5):
 # - EfficientNet: B0, B1 (smallest variants)
 # - ResNet: 18 (smallest)
 # - MobileNet: V2, V3-Small (both lightweight)
-# - DenseNet: 121 (smallest)
-# - VGG: 11 (smallest)
+# Note: DenseNet121 and VGG11 removed due to OOM errors
 #
 # Custom Face Models (3):
 # - GhostFaceNetV2: Small variant only
@@ -138,11 +128,9 @@ fixed:
 # High Accuracy (95-100%):
 # - EfficientNet B0, B1
 # - ResNet18
-# - DenseNet121
 #
 # Good Accuracy (85-95%):
 # - MobileNet variants
-# - VGG11
 # - Custom face models (should be higher but currently underperforming)
 #
 # Baseline (70-90%):
@@ -150,6 +138,6 @@ fixed:
 # - CNN
 #
 # Memory Usage (Expected):
-# - All models should fit comfortably in 11GB GPU memory
+# - All remaining models should fit in 11GB GPU memory
 # - Batch size 16 should work for all models
-# - No OOM errors expected
+# - DenseNet121 and VGG11 removed due to excessive memory requirements
