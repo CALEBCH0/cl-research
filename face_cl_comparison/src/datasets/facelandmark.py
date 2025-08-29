@@ -237,14 +237,13 @@ def create_facelandmark_benchmark(
     
     # Create BenchmarkInfo
     benchmark_info = BenchmarkInfo(
-        name='facelandmark_crop',
-        n_classes=n_classes,
-        n_experiences=actual_n_experiences,
+        num_classes=n_classes,
         image_size=image_size,
         channels=3,  # RGB images
-        classes_per_experience=classes_per_exp,
-        total_train_samples=len(train_indices),
-        total_test_samples=len(test_indices)
+        num_train=len(train_indices),
+        num_test=len(test_indices),
+        n_experiences=actual_n_experiences,
+        class_names=full_dataset.idx_to_class if hasattr(full_dataset, 'idx_to_class') else None
     )
     
     print(f"Created FaceLandmark benchmark:")
