@@ -155,11 +155,7 @@ def _create_feature_extractor(model: nn.Module, model_type: str, benchmark_info)
         def forward(self, x):
             # If the base model has preprocessing wrapper, it handles input conversion
             # If it's an Avalanche model, handle reshaping
-            if hasattr(self.base_model, '_input_size'):
-                # Avalanche models like SimpleMLP need input reshaping
-                x = x.contiguous().view(x.size(0), self.base_model._input_size)
-                return self.base_model.features(x)
-            elif hasattr(self.base_model, 'base_model'):
+            if hasattr(self.base_model, 'base_model'):
                 # Our preprocessing wrapper - extract features from the wrapped model
                 wrapped_model = self.base_model.base_model
                 
@@ -184,14 +180,20 @@ def _create_feature_extractor(model: nn.Module, model_type: str, benchmark_info)
         
         def _extract_features(self, model, x):
             """Extract features from penultimate layer."""
-            if hasattr(model, 'classifier'):
-                # Models with classifier (EfficientNet, VGG, etc)
+            # Check if this is SimpleMLP (has get_features method)
+            if hasattr(model, 'get_features'):
+                # This is SimpleMLP - use built-in get_features method
+                return model.get_features(x)
+                
+            elif hasattr(model, 'classifier'):
+                # Models with classifier (EfficientNet, VGG, etc)  
                 # Extract features before the classifier but after global pooling
                 features = model.features(x)
+                
                 if hasattr(model, 'avgpool'):
                     features = model.avgpool(features)
                 elif features.dim() > 2:
-                    # Apply global average pooling if no explicit avgpool
+                    # Apply global average pooling if no explicit avgpool (VGG case)
                     features = nn.functional.adaptive_avg_pool2d(features, (1, 1))
                     
             elif hasattr(model, 'fc'):
@@ -315,10 +317,12 @@ MODEL_FEATURE_SIZES = {
     'densenet161': 2208,
     'densenet169': 1664,
     'densenet201': 1920,
-    'vgg11': 4096,
-    'vgg13': 4096,
-    'vgg16': 4096,
-    'vgg19': 4096,
+    'vgg11': 512,  # 512 features after global avg pooling from final conv layer
+    'vgg13': 512,  # 512 features after global avg pooling from final conv layer  
+    'vgg16': 512,  # 512 features after global avg pooling from final conv layer
+    'vgg19': 512,  # 512 features after global avg pooling from final conv layer
+    'mlp': 512,    # 512 features from last hidden layer (hidden_size in config)
+    'cnn': 256,    # SimpleCNN default feature size (needs verification)
 }
 
 # Strategy mappings
@@ -487,8 +491,27 @@ def create_model_from_config(model_config: Dict[str, Any], benchmark_info: Bench
             # Final fallback to None (no pretrained weights)
             model = model_fn(weights=None)
         
-        # Update final layer for correct number of classes
+        # Update final layer for correct number of classes and add proper avgpool for VGG
         if hasattr(model, 'classifier'):
+            # For VGG models, add avgpool if it doesn't exist and modify forward pass
+            if model_type.startswith('vgg') and not hasattr(model, 'avgpool'):
+                # Add avgpool between features and classifier
+                model.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+                
+                # Store original forward method
+                original_forward = model.forward
+                
+                def vgg_forward_with_avgpool(self, x):
+                    x = self.features(x)
+                    x = self.avgpool(x)
+                    x = torch.flatten(x, 1)
+                    x = self.classifier(x)
+                    return x
+                
+                # Replace forward method
+                import types
+                model.forward = types.MethodType(vgg_forward_with_avgpool, model)
+                
             if isinstance(model.classifier, nn.Sequential):
                 in_features = model.classifier[-1].in_features
                 model.classifier[-1] = nn.Linear(in_features, benchmark_info.num_classes)
